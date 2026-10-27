@@ -1,0 +1,51 @@
+name: Go CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Unit and build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test ./... -count=1 -timeout 10m
+      - run: go vet ./...
+      - run: go build ./cmd/runtime
+
+  docker-integration:
+    name: Docker integration (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Check Docker daemon
+        run: docker info
+      - name: Build sandbox image
+        run: go run ./cmd/runtime prepare --project . --config configs/local.json
+      - name: Run Docker integration tests
+        env:
+          AGENTEVAL_DOCKER_TESTS: '1'
+        run: go test ./... -run 'Docker|Integration' -count=1 -timeout 10m

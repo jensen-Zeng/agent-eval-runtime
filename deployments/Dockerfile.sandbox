@@ -1,0 +1,14 @@
+FROM golang:1.27.1-bookworm AS build
+WORKDIR /src
+COPY go.mod ./go.mod
+COPY cmd/sandbox-helper ./cmd/sandbox-helper
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/sandbox-helper ./cmd/sandbox-helper
+
+FROM golang:1.27.1-bookworm
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates python3 && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 sandbox && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin sandbox
+COPY --from=build /out/sandbox-helper /usr/local/bin/sandbox-helper
+ENV HOME=/tmp GOCACHE=/tmp/go-build GOMODCACHE=/tmp/go-mod GOPATH=/tmp/go
+USER 10001:10001
+WORKDIR /workspace
+ENTRYPOINT ["/bin/sleep", "infinity"]

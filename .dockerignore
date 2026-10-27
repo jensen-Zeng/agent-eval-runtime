@@ -1,0 +1,8 @@
+**
+!go.mod
+!deployments/
+!deployments/Dockerfile.sandbox
+!cmd/
+!cmd/sandbox-helper/
+!cmd/sandbox-helper/*.go
+cmd/sandbox-helper/*_test.go

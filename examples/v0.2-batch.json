@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "name": "v02-batch-demo",
+  "jobs": [
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-parser-001",
+        "agent": "scripted",
+        "script": "success"
+      },
+      "idempotency_key": "v02-batch-demo-001"
+    },
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-range-003",
+        "agent": "scripted",
+        "script": "success"
+      },
+      "idempotency_key": "v02-batch-demo-002"
+    },
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-unique-002",
+        "agent": "scripted",
+        "script": "success"
+      },
+      "idempotency_key": "v02-batch-demo-003"
+    },
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-parser-001",
+        "agent": "scripted",
+        "script": "success"
+      },
+      "idempotency_key": "v02-batch-demo-004"
+    },
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-range-003",
+        "agent": "scripted",
+        "script": "failure"
+      },
+      "idempotency_key": "v02-batch-demo-005"
+    },
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-unique-002",
+        "agent": "scripted",
+        "script": "success"
+      },
+      "idempotency_key": "v02-batch-demo-006"
+    },
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-parser-001",
+        "agent": "scripted",
+        "script": "success"
+      },
+      "idempotency_key": "v02-batch-demo-007"
+    },
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-range-003",
+        "agent": "scripted",
+        "script": "success"
+      },
+      "idempotency_key": "v02-batch-demo-008"
+    },
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-unique-002",
+        "agent": "scripted",
+        "script": "success"
+      },
+      "idempotency_key": "v02-batch-demo-009"
+    },
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-parser-001",
+        "agent": "scripted",
+        "script": "failure"
+      },
+      "idempotency_key": "v02-batch-demo-010"
+    },
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-range-003",
+        "agent": "scripted",
+        "script": "success"
+      },
+      "idempotency_key": "v02-batch-demo-011"
+    },
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-unique-002",
+        "agent": "scripted",
+        "script": "success"
+      },
+      "idempotency_key": "v02-batch-demo-012"
+    },
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-parser-001",
+        "agent": "scripted",
+        "script": "success"
+      },
+      "idempotency_key": "v02-batch-demo-013"
+    },
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-range-003",
+        "agent": "scripted",
+        "script": "success"
+      },
+      "idempotency_key": "v02-batch-demo-014"
+    },
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-unique-002",
+        "agent": "scripted",
+        "script": "failure"
+      },
+      "idempotency_key": "v02-batch-demo-015"
+    },
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-parser-001",
+        "agent": "scripted",
+        "script": "success"
+      },
+      "idempotency_key": "v02-batch-demo-016"
+    },
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-range-003",
+        "agent": "scripted",
+        "script": "success"
+      },
+      "idempotency_key": "v02-batch-demo-017"
+    },
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-unique-002",
+        "agent": "scripted",
+        "script": "success"
+      },
+      "idempotency_key": "v02-batch-demo-018"
+    },
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-parser-001",
+        "agent": "scripted",
+        "script": "success"
+      },
+      "idempotency_key": "v02-batch-demo-019"
+    },
+    {
+      "request": {
+        "schema_version": 1,
+        "task_id": "go-range-003",
+        "agent": "scripted",
+        "script": "failure"
+      },
+      "idempotency_key": "v02-batch-demo-020"
+    }
+  ]
+}

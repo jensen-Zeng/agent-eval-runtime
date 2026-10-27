@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "task_id": "go-unique-002",
+  "task_revision": 2,
+  "prompt": "Implement Unique(values []string) []string so it returns a new slice containing each distinct string once in first-seen order, without modifying the input. Only edit unique.go. Run go test ./... before finishing.",
+  "source_dir": "source",
+  "source_sha256": "349efec5a2676056c0c343aa3d987f7c9d2137993f37c7870ebf54e477648448",
+  "evaluator_dir": "../../../evaluators/go-unique-002",
+  "evaluator_sha256": "54f2506e14dedd0dfda159be04b5a99c0f8da6cbcef5f1ebc7103b9b1dcad6e4",
+  "required_tests": [
+    "TestUniqueSingle",
+    "TestUniqueRepeated",
+    "TestUniquePreservesOrder",
+    "TestUniqueDoesNotModifyInput",
+    "TestUniqueEmpty"
+  ],
+  "allowed_files": [
+    "unique.go"
+  ],
+  "budget": {
+    "max_tokens": 30000,
+    "prepare_seconds": 120,
+    "max_steps": 20,
+    "command_seconds": 30,
+    "run_seconds": 600,
+    "collect_seconds": 30,
+    "eval_seconds": 120,
+    "max_output_tokens": 4096,
+    "cleanup_seconds": 30,
+    "model_seconds": 60
+  },
+  "limits": {
+    "workspace_mib": 64,
+    "cpus": 1,
+    "memory_mib": 1024,
+    "pids": 64
+  },
+  "scripts": {
+    "success": {
+      "actions": [
+        {
+          "tool": "list_files",
+          "arguments": {
+            "path": "."
+          }
+        },
+        {
+          "tool": "read_file",
+          "arguments": {
+            "path": "unique.go"
+          }
+        },
+        {
+          "tool": "write_file",
+          "arguments": {
+            "path": "unique.go",
+            "content": "package unique\n\n// Unique returns each value once, in first-seen order, without modifying values.\nfunc Unique(values []string) []string {\n\tseen := make(map[string]struct{}, len(values))\n\tresult := make([]string, 0, len(values))\n\tfor _, value := range values {\n\t\tif _, exists := seen[value]; exists {\n\t\t\tcontinue\n\t\t}\n\t\tseen[value] = struct{}{}\n\t\tresult = append(result, value)\n\t}\n\treturn result\n}\n"
+          }
+        },
+        {
+          "tool": "exec",
+          "arguments": {
+            "argv": [
+              "go",
+              "test",
+              "./..."
+            ],
+            "timeout_seconds": 30
+          }
+        },
+        {
+          "tool": "finish",
+          "arguments": {
+            "summary": "Applied the implementation and ran the visible Go tests; trusted evaluation decides the result."
+          }
+        }
+      ]
+    },
+    "failure": {
+      "actions": [
+        {
+          "tool": "finish",
+          "arguments": {
+            "summary": "Intentional scripted failure path."
+          }
+        }
+      ]
+    }
+  }
+}

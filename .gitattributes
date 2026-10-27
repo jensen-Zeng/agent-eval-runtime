@@ -1,0 +1,11 @@
+* text=auto eol=lf
+*.go text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.ps1 text eol=lf
+*.sh text eol=lf
+
+# Registered task hashes cover raw bytes, including line endings.
+# Preserve the exact fixture and grader bytes on every checkout.
+tasks/fixtures/** -text
+evaluators/** -text

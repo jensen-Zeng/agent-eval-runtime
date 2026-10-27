@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "v1-scripted-smoke",
+  "tasks": [
+    "go-parser-001"
+  ],
+  "variants": [
+    {
+      "agent": "scripted",
+      "script": "success"
+    },
+    {
+      "agent": "scripted",
+      "script": "failure"
+    }
+  ],
+  "repeats": 2
+}

@@ -1,0 +1,19 @@
+{
+  "image": "agenteval-sandbox:v1.0",
+  "docker_host": "",
+  "artifacts_dir": "artifacts",
+  "llm": {
+    "base_url": "https://api.openai.com/v1",
+    "model": "",
+    "api_key_env": "OPENAI_API_KEY",
+    "max_retries": 2
+  },
+  "server": {
+    "listen": "127.0.0.1:8787",
+    "workers": 2,
+    "queue_capacity": 32,
+    "poll_interval_ms": 250,
+    "shutdown_seconds": 30,
+    "database_url_env": "AGENTEVAL_DATABASE_URL"
+  }
+}

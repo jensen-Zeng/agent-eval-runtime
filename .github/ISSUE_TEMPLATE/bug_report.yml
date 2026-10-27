@@ -1,0 +1,31 @@
+name: Bug report
+description: Report a reproducible runtime, evaluation, or UI problem
+body:
+  - type: markdown
+    attributes:
+      value: Do not include API keys, passwords, private task data, or unredacted traces. Report security vulnerabilities using SECURITY.md.
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Runtime version, host OS, Go version, Docker engine OS/version, and startup method.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Prefer one of the bundled demo tasks and the smallest reproducible command or UI sequence.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence
+      description: Include error codes and relevant logs; remove secrets and private inputs.

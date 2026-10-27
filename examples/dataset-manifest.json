@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "name": "my-code-repair-dataset",
+  "root": "D:/YourDataset",
+  "adapter": "manifest",
+  "items": [
+    {
+      "key": "sample-v1",
+      "task_id": "sample-001",
+      "package_path": "sample",
+      "source": "sample/source.zip",
+      "prompt_files": [
+        "sample/instruction.md",
+        "sample/rules.md"
+      ],
+      "grader_dir": "sample/private-grader",
+      "grader_entry": "grade.py",
+      "allowed_files": [
+        "main.go"
+      ],
+      "state": "candidate",
+      "metadata": {
+        "upstream_revision": "REVIEWED_REVISION",
+        "split": "evaluation"
+      }
+    }
+  ]
+}

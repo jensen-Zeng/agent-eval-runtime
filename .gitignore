@@ -1,0 +1,43 @@
+# Downloaded toolchains and local setup evidence
+/.setup/
+/.gocache/
+
+# Build output, experiments, traces, reports and exported submissions
+/artifacts/
+/bin/
+/runtime
+/runtime.exe
+*.test
+*.test.exe
+coverage.out
+
+# Local credentials and provider settings
+.env
+.env.*
+!.env.example
+/configs/ui/
+/configs/*.local.json
+/configs/e3-local.json
+/configs/dependency.json
+
+# Operator-imported tasks are local data. Publish only the three owned demos.
+/tasks/fixtures/*
+!/tasks/fixtures/go-parser-001/
+!/tasks/fixtures/go-range-003/
+!/tasks/fixtures/go-unique-002/
+/examples/e3-*.json
+
+# Machine-specific historical acceptance evidence remains local
+/docs/*VALIDATION.md
+/docs/V0.2_ACCEPTANCE.md
+/docs/V0.2_IMPLEMENTATION.md
+
+# Editor and operating-system metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc
+__MACOSX/
+._*

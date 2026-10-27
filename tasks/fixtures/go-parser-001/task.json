@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "task_id": "go-parser-001",
+  "task_revision": 1,
+  "prompt": "修复 ParseCount：空输入或仅含空白时返回 ErrEmpty；负数（允许外围空白）返回 ErrNegative；接受外围空白的非负十进制整数；保留已有可见测试行为。只能修改 parser.go。完成后运行 go test ./... 并提交结果。",
+  "source_dir": "source",
+  "source_sha256": "d6665496ff8c3d1c0ab7044ee3acdabb0ba5b3571376de7aba3eaa65bfc0fba4",
+  "evaluator_dir": "../../../evaluators/go-parser-001",
+  "evaluator_sha256": "aef6f8d928419cb4f11e9a05ddda8c40239fc5cb71117967d0163282a6cbe4e6",
+  "required_tests": [
+    "TestEmpty",
+    "TestNegative",
+    "TestWhitespace",
+    "TestRegression"
+  ],
+  "allowed_files": [
+    "parser.go"
+  ],
+  "budget": {
+    "max_tokens": 30000,
+    "prepare_seconds": 120,
+    "max_steps": 20,
+    "command_seconds": 30,
+    "run_seconds": 600,
+    "collect_seconds": 30,
+    "eval_seconds": 120,
+    "max_output_tokens": 4096,
+    "cleanup_seconds": 30,
+    "model_seconds": 60
+  },
+  "limits": {
+    "workspace_mib": 64,
+    "cpus": 1,
+    "memory_mib": 1024,
+    "pids": 64
+  },
+  "scripts": {
+    "tamper": {
+      "actions": [
+        {
+          "arguments": {
+            "argv": [
+              "sh",
+              "-c",
+              "printf '%s\\n' 'package parser' 'import \"testing\"' 'func TestVisibleValidCount(t *testing.T) {}' > parser_test.go"
+            ],
+            "workdir": null,
+            "timeout_seconds": 30
+          },
+          "tool": "exec"
+        },
+        {
+          "arguments": {
+            "summary": "Changed a visible test through shell execution; trusted evaluation must reject the modified file."
+          },
+          "tool": "finish"
+        }
+      ]
+    },
+    "success": {
+      "actions": [
+        {
+          "arguments": {
+            "path": "."
+          },
+          "tool": "list_files"
+        },
+        {
+          "arguments": {
+            "path": "parser.go"
+          },
+          "tool": "read_file"
+        },
+        {
+          "arguments": {
+            "content": "package parser\n\nimport (\n\t\"errors\"\n\t\"strconv\"\n\t\"strings\"\n)\n\nvar ErrEmpty = errors.New(\"empty count\")\nvar ErrNegative = errors.New(\"count must be non-negative\")\n\n// ParseCount parses a non-negative base-10 count. Surrounding whitespace is allowed.\nfunc ParseCount(input string) (int, error) {\n\tinput = strings.TrimSpace(input)\n\tif input == \"\" {\n\t\treturn 0, ErrEmpty\n\t}\n\tvalue, err := strconv.Atoi(input)\n\tif err != nil {\n\t\treturn 0, err\n\t}\n\tif value < 0 {\n\t\treturn 0, ErrNegative\n\t}\n\treturn value, nil\n}",
+            "path": "parser.go"
+          },
+          "tool": "write_file"
+        },
+        {
+          "arguments": {
+            "argv": [
+              "go",
+              "test",
+              "./..."
+            ],
+            "timeout_seconds": 30
+          },
+          "tool": "exec"
+        },
+        {
+          "arguments": {
+            "summary": "Fixed whitespace parsing; trusted evaluation decides the result."
+          },
+          "tool": "finish"
+        }
+      ]
+    },
+    "oom": {
+      "actions": [
+        {
+          "arguments": {
+            "argv": [
+              "/usr/local/bin/sandbox-helper",
+              "--oom-probe"
+            ],
+            "timeout_seconds": 30
+          },
+          "tool": "exec"
+        }
+      ]
+    },
+    "failure": {
+      "actions": [
+        {
+          "arguments": {
+            "summary": "Intentional scripted failure path."
+          },
+          "tool": "finish"
+        }
+      ]
+    },
+    "timeout": {
+      "actions": [
+        {
+          "arguments": {
+            "argv": [
+              "sh",
+              "-c",
+              "sleep 60 & wait"
+            ],
+            "timeout_seconds": 1
+          },
+          "tool": "exec"
+        }
+      ]
+    }
+  }
+}
