@@ -1,10 +1,11 @@
 package domain
 
 import (
-	"github.com/jensen-Zeng/agent-eval-runtime/internal/sandbox"
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/jensen-Zeng/agent-eval-runtime/internal/sandbox"
+	"strings"
 	"time"
 )
 
@@ -43,7 +44,22 @@ type ExecutionEnvironment struct {
 	GoModuleCache string `json:"go_module_cache,omitempty"`
 }
 
+type HarborSpec struct {
+	VerifierTmpfs   []string `json:"verifier_tmpfs,omitempty"`
+	PackageDir      string   `json:"package_dir"`
+	PackageSHA256   string   `json:"package_sha256"`
+	AgentImage      string   `json:"agent_image"`
+	VerifierImage   string   `json:"verifier_image"`
+	Workdir         string   `json:"workdir"`
+	AgentEnv        []string `json:"agent_env,omitempty"`
+	VerifierEnv     []string `json:"verifier_env,omitempty"`
+	RequiredOutputs []string `json:"required_outputs"`
+	PassThreshold   float64  `json:"pass_threshold"`
+}
+
 type Task struct {
+	Backend         string               `json:"backend,omitempty"`
+	Harbor          *HarborSpec          `json:"harbor,omitempty"`
 	Metadata        map[string]string    `json:"metadata,omitempty"`
 	Environment     ExecutionEnvironment `json:"environment,omitempty"`
 	Grader          *Grader              `json:"grader,omitempty"`
@@ -65,6 +81,23 @@ type Task struct {
 }
 
 func (t Task) CommandEnvironment() []string {
+	if t.IsHarbor() {
+		env := append([]string(nil), t.Harbor.AgentEnv...)
+		for _, fallback := range []string{"PYTHONDONTWRITEBYTECODE=1", "PYTHONUNBUFFERED=1"} {
+			key, _, _ := strings.Cut(fallback, "=")
+			found := false
+			for _, item := range env {
+				if strings.HasPrefix(item, key+"=") {
+					found = true
+					break
+				}
+			}
+			if !found {
+				env = append(env, fallback)
+			}
+		}
+		return env
+	}
 	env := []string{"GOTOOLCHAIN=local", "GOPROXY=off", "GOSUMDB=off"}
 	if t.Environment.GoModuleCache != "" {
 		env = append(env, "GOMODCACHE="+t.Environment.GoModuleCache)
@@ -128,4 +161,12 @@ func Reason(err error) string {
 		return "canceled"
 	}
 	return "infra_error"
+}
+
+func (t Task) IsHarbor() bool { return t.Backend == "harbor" && t.Harbor != nil }
+func (t Task) Workdir() string {
+	if t.IsHarbor() {
+		return t.Harbor.Workdir
+	}
+	return "/workspace"
 }

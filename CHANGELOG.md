@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0
+
+- Added a constrained Harbor T3-RL-v1.0 task backend with separate local agent/verifier image builds, frozen package/image IDs, programmatic continuous reward parsing, and submission archive export.
+- Added a Harbor package inspection/import CLI and a self-owned file-artifacts demo fixture; raw Harbor import remains a CLI workflow followed by a service restart.
+- Added Harbor image viewing for PNG/JPEG and GIF frames 0–31; video/audio remain in-container `exec` workflows without native model message inputs.
+- Documentation records unsupported Harbor modes and the distinction between static package compatibility and Docker/model end-to-end validation.
+
 ## 1.2.0
 
 - Added an embedded local web console for task selection, model/repeat configuration, saved experiment presets, run history, traces, and evidence exports.

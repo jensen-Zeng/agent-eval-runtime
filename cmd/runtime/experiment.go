@@ -1,9 +1,6 @@
 package main
 
 import (
-	"github.com/jensen-Zeng/agent-eval-runtime/internal/client"
-	"github.com/jensen-Zeng/agent-eval-runtime/internal/domain"
-	"github.com/jensen-Zeng/agent-eval-runtime/internal/jobs"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -13,6 +10,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/jensen-Zeng/agent-eval-runtime/internal/client"
+	"github.com/jensen-Zeng/agent-eval-runtime/internal/domain"
+	"github.com/jensen-Zeng/agent-eval-runtime/internal/jobs"
 	"io"
 	"net/http"
 	"os"
@@ -531,6 +531,13 @@ func loadOrCreateExperiment(path string, input experimentInput, inputHash string
 }
 
 func validExperimentSnapshot(s jobs.TaskSnapshot) bool {
+	if s.Backend == "harbor" {
+		if !experimentHashPattern.MatchString(s.PackageSHA256) || !experimentImagePattern.MatchString(s.VerifierImageID) {
+			return false
+		}
+	} else if s.Backend != "" && s.Backend != "go" {
+		return false
+	}
 	return s.TaskRevision > 0 && experimentHashPattern.MatchString(s.ManifestSHA256) && experimentHashPattern.MatchString(s.SourceSHA256) && experimentHashPattern.MatchString(s.EvaluatorSHA256) && experimentImagePattern.MatchString(s.ImageID) && experimentHashPattern.MatchString(s.AgentConfigSHA256)
 }
 

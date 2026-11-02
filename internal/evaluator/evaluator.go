@@ -1,17 +1,18 @@
 package evaluator
 
 import (
-	"github.com/jensen-Zeng/agent-eval-runtime/internal/domain"
-	"github.com/jensen-Zeng/agent-eval-runtime/internal/sandbox"
 	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/jensen-Zeng/agent-eval-runtime/internal/domain"
+	"github.com/jensen-Zeng/agent-eval-runtime/internal/sandbox"
 	"strings"
 	"time"
 )
 
 type Result struct {
+	Diagnostics    json.RawMessage    `json:"diagnostics,omitempty"`
 	Score          *float64           `json:"score,omitempty"`
 	Classification string             `json:"classification,omitempty"`
 	Checks         json.RawMessage    `json:"checks,omitempty"`
@@ -40,6 +41,9 @@ func Inputs(t domain.Task) sandbox.Files {
 }
 
 func Evaluate(ctx context.Context, s sandbox.Sandbox, t domain.Task, p string) (Result, error) {
+	if t.IsHarbor() {
+		return evaluateHarbor(ctx, s, t)
+	}
 	if t.Grader != nil {
 		return evaluatePython(ctx, s, t, p)
 	}

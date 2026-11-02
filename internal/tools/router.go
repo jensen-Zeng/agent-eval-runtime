@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"path"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jensen-Zeng/agent-eval-runtime/internal/domain"
 	"github.com/jensen-Zeng/agent-eval-runtime/internal/sandbox"
@@ -18,13 +20,16 @@ const MaxFileBytes = 1 << 20
 const MaxOutputBytes = 64 << 10
 
 type Result struct {
-	Name     string `json:"name"`
-	Output   string `json:"output"`
-	Finished bool   `json:"finished,omitempty"`
+	Name         string `json:"name"`
+	Output       string `json:"output"`
+	Finished     bool   `json:"finished,omitempty"`
+	ImageDataURL string `json:"-"`
 }
 type Router struct {
-	Box  sandbox.Sandbox
-	Task domain.Task
+	Box        sandbox.Sandbox
+	Task       domain.Task
+	imageCount int
+	imageBytes int
 }
 
 func Definitions() []map[string]any {
@@ -37,6 +42,23 @@ func Definitions() []map[string]any {
 		fn("finish", "Finish the task with a short summary", obj(map[string]any{"summary": strSchema("completion summary")}, "summary")),
 	}
 }
+func DefinitionsForTask(task domain.Task) []map[string]any {
+	definitions := Definitions()
+	if task.IsHarbor() {
+		filtered := make([]map[string]any, 0, len(definitions)-1)
+		for _, definition := range definitions {
+			function := definition["function"].(map[string]any)
+			if function["name"] != "apply_patch" {
+				filtered = append(filtered, definition)
+			}
+		}
+		definitions = filtered
+		frame := map[string]any{"anyOf": []map[string]any{{"type": "integer", "minimum": 0}, {"type": "null"}}}
+		definitions = append(definitions, fn("read_image", "Read and display a PNG, JPEG, or GIF frame from the Harbor workspace. GIF frame indexes 0-31 are supported; use exec to extract later frames from long animations.", obj(map[string]any{"path": strSchema("relative workspace image path"), "frame": frame}, "path", "frame")))
+	}
+	return definitions
+}
+
 func fn(name, desc string, params map[string]any) map[string]any {
 	return map[string]any{"type": "function", "function": map[string]any{"name": name, "description": desc, "parameters": params, "strict": true}}
 }
@@ -100,6 +122,9 @@ func (r *Router) Call(ctx context.Context, name string, raw json.RawMessage) (Re
 		if e != nil {
 			return Result{}, domain.Fail("infra_error", e)
 		}
+		if r.Task.IsHarbor() && (!utf8.Valid(b) || bytes.IndexByte(b, 0) >= 0) {
+			return output(name, map[string]any{"path": p, "binary": true, "bytes": len(b), "hint": "Use read_image for PNG/JPEG/GIF visuals; use exec within the sandbox for other binary data."}), nil
+		}
 		if len(b) > MaxFileBytes {
 			return bad(errors.New("file exceeds 1 MiB"))
 		}
@@ -127,6 +152,9 @@ func (r *Router) Call(ctx context.Context, name string, raw json.RawMessage) (Re
 		}
 		return output(name, map[string]any{"written": p, "bytes": len(a.Content)}), nil
 	case "apply_patch":
+		if r.Task.IsHarbor() {
+			return bad(errors.New("apply_patch may require git, which is not guaranteed in Harbor images; use write_file or exec instead"))
+		}
 		var a struct {
 			Patch string `json:"patch"`
 		}
@@ -190,6 +218,13 @@ func (r *Router) Call(ctx context.Context, name string, raw json.RawMessage) (Re
 		if r.Task.Budget.RunSeconds > 0 && sec > r.Task.Budget.RunSeconds {
 			sec = r.Task.Budget.RunSeconds
 		}
+		if r.Task.IsHarbor() {
+			root := r.Task.Workdir()
+			if root == "" {
+				root = "/app"
+			}
+			wd = path.Join(root, wd)
+		}
 		x, e := r.Box.Exec(ctx, sandbox.ExecRequest{Argv: a.Argv, Workdir: wd, Timeout: time.Duration(sec) * time.Second, OutputLimit: MaxOutputBytes, Env: r.Task.CommandEnvironment()})
 		if x.TimedOut || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return Result{}, domain.Fail("timeout", context.DeadlineExceeded)
@@ -207,6 +242,49 @@ func (r *Router) Call(ctx context.Context, name string, raw json.RawMessage) (Re
 			return Result{}, domain.Fail("infra_error", errors.New("command exit status is unknown"))
 		}
 		return output(name, map[string]any{"exit_code": x.ExitCode, "exit_known": x.ExitKnown, "stdout": x.Stdout, "stderr": x.Stderr, "truncated": x.Truncated, "duration_ms": x.DurationMS}), nil
+	case "read_image":
+		if !r.Task.IsHarbor() {
+			return bad(errors.New("read_image is available only for Harbor tasks"))
+		}
+		var a struct {
+			Path  string `json:"path"`
+			Frame *int   `json:"frame"`
+		}
+		if e := decode(&a); e != nil {
+			return bad(e)
+		}
+		p, e := clean(a.Path, false)
+		if e != nil {
+			return bad(e)
+		}
+		if r.imageCount >= MaxImagesPerRun {
+			return bad(fmt.Errorf("image read budget exceeded (maximum %d per run)", MaxImagesPerRun))
+		}
+		r.imageCount++
+		b, e := r.Box.ReadFile(ctx, p)
+		if e != nil {
+			return Result{}, domain.Fail("infra_error", e)
+		}
+		if len(b) > MaxImageInputBytes {
+			return bad(fmt.Errorf("image exceeds %d MiB input limit", MaxImageInputBytes>>20))
+		}
+		pngData, info, e := encodeImagePNG(b, a.Frame)
+		if e != nil {
+			return bad(e)
+		}
+		if r.imageBytes+len(pngData) > MaxImageContextBytes {
+			return bad(fmt.Errorf("image context exceeds %d MiB per-run limit", MaxImageContextBytes>>20))
+		}
+		r.imageBytes += len(pngData)
+		info.Path = p
+		info.Frame = 0
+		if a.Frame != nil {
+			info.Frame = *a.Frame
+		}
+		info.EncodedBytes = len(pngData)
+		out := output(name, info)
+		out.ImageDataURL = imageDataURL(pngData)
+		return out, nil
 	case "finish":
 		var a struct {
 			Summary string `json:"summary"`
@@ -237,6 +315,9 @@ func output(name string, v any) Result {
 	return Result{Name: name, Output: s}
 }
 func (r *Router) allowed(p string) bool {
+	if r.Task.IsHarbor() {
+		return true
+	}
 	if len(r.Task.AllowedFiles) == 0 {
 		return true
 	}

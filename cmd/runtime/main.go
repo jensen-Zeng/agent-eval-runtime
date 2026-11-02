@@ -1,16 +1,16 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
 	"github.com/jensen-Zeng/agent-eval-runtime/internal/agent"
 	"github.com/jensen-Zeng/agent-eval-runtime/internal/config"
 	"github.com/jensen-Zeng/agent-eval-runtime/internal/domain"
 	"github.com/jensen-Zeng/agent-eval-runtime/internal/runner"
 	dockersandbox "github.com/jensen-Zeng/agent-eval-runtime/internal/sandbox/docker"
 	"github.com/jensen-Zeng/agent-eval-runtime/internal/task"
-	"context"
-	"encoding/json"
-	"flag"
-	"fmt"
 	"io"
 	"os"
 	"os/signal"
@@ -27,7 +27,7 @@ func main() {
 }
 func execute(ctx context.Context, args []string, out, errout io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "AgentEval Runtime v"+runner.Version+"\nCommands: version, doctor, prepare, hash, run, get, serve, submit, status, list, cancel, events, tasks, batch, experiment, reeval, import, dataset, export\nUse <command> --help for flags.")
+		fmt.Fprintln(out, "AgentEval Runtime v"+runner.Version+"\nCommands: version, doctor, prepare, hash, run, get, serve, submit, status, list, cancel, events, tasks, batch, experiment, reeval, import, dataset, harbor, export\nUse <command> --help for flags.")
 		return 0
 	}
 	if args[0] == "version" {
@@ -35,11 +35,13 @@ func execute(ctx context.Context, args []string, out, errout io.Writer) int {
 		return 0
 	}
 	switch args[0] {
+	case "harbor":
+		return executeHarbor(ctx, args[1:], out, errout)
 	case "dataset":
-        return executeDataset(ctx, args[1:], out, errout)
-    case "export":
-        return executeExport(ctx, args[1:], out, errout)
-    case "import":
+		return executeDataset(ctx, args[1:], out, errout)
+	case "export":
+		return executeExport(ctx, args[1:], out, errout)
+	case "import":
 		return executeImport(ctx, args[1:], out, errout)
 	case "experiment":
 		return executeExperiment(ctx, args[1:], out, errout)

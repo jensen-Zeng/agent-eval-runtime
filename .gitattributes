@@ -9,3 +9,6 @@
 # Preserve the exact fixture and grader bytes on every checkout.
 tasks/fixtures/** -text
 evaluators/** -text
+
+# Preserve original Harbor package bytes for reproducible hashes.
+examples/harbor/** -text

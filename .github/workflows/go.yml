@@ -48,4 +48,4 @@ jobs:
       - name: Run Docker integration tests
         env:
           AGENTEVAL_DOCKER_TESTS: '1'
-        run: go test ./... -run 'Docker|Integration' -count=1 -timeout 10m
+        run: go test ./... -run 'Docker|Integration|HarborRuntimeEndToEnd' -count=1 -timeout 10m

@@ -3,6 +3,10 @@ package sandbox
 
 import (
 	"context"
+	"fmt"
+	"path"
+	"regexp"
+	"strings"
 	"time"
 )
 
@@ -17,9 +21,52 @@ type Limits struct {
 }
 
 type Spec struct {
-	Image  string
-	Labels map[string]string
-	Limits Limits
+	Image          string
+	Labels         map[string]string
+	Limits         Limits
+	Workdir        string
+	ImageWorkspace bool
+	Harbor         bool
+	Env            []string
+	FileModes      map[string]uint32
+	WritableDirs   []string
+}
+
+var writableDirName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
+
+var reservedWritableDirs = map[string]struct{}{
+	"app": {}, "tmp": {}, "logs": {}, "tests": {}, "opt": {}, "usr": {},
+	"etc": {}, "proc": {}, "sys": {}, "dev": {}, "var": {}, "bin": {},
+	"sbin": {}, "lib": {}, "lib64": {}, "home": {}, "root": {}, "run": {},
+	"workspace": {}, "boot": {}, "media": {}, "mnt": {}, "srv": {},
+	"lost+found": {},
+}
+
+// ValidateWritableDirs accepts at most four safe, absolute top-level paths for
+// bounded Harbor scratch tmpfs mounts. The Docker adapter separately limits
+// this capability to Harbor verifier sandboxes.
+func ValidateWritableDirs(dirs []string) error {
+	if len(dirs) > 4 {
+		return fmt.Errorf("at most four writable scratch directories are allowed")
+	}
+	seen := make(map[string]struct{}, len(dirs))
+	for _, dir := range dirs {
+		if dir == "/" || !strings.HasPrefix(dir, "/") || path.Clean(dir) != dir || path.Dir(dir) != "/" {
+			return fmt.Errorf("writable scratch path must be one absolute top-level directory")
+		}
+		name := strings.TrimPrefix(dir, "/")
+		if !writableDirName.MatchString(name) {
+			return fmt.Errorf("invalid writable scratch directory name")
+		}
+		if _, reserved := reservedWritableDirs[strings.ToLower(name)]; reserved {
+			return fmt.Errorf("reserved writable scratch directory %q", dir)
+		}
+		if _, duplicate := seen[name]; duplicate {
+			return fmt.Errorf("duplicate writable scratch directory %q", dir)
+		}
+		seen[name] = struct{}{}
+	}
+	return nil
 }
 
 type Info struct {
@@ -67,6 +114,12 @@ type Sandbox interface {
 	Snapshot(context.Context) (Files, error)
 	Stats(context.Context) (Stats, error)
 	Destroy(context.Context) error
+}
+
+// ModeSnapshotter is implemented by sandboxes that can preserve executable
+// bits from a snapshot for a later verifier workspace.
+type ModeSnapshotter interface {
+	SnapshotModes() map[string]uint32
 }
 
 type Factory interface {

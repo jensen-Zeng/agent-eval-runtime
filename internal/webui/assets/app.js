@@ -45,7 +45,7 @@
   }
   function sourceOf(task) { const m = task.metadata || {}; return m.dataset || m.source || m.package || m.source_type || '本地任务'; }
   function taskTitle(task) { return task.title || task.name || task.task_id || '未命名任务'; }
-  function taskSearchText(task) { return [taskTitle(task), task.task_id, sourceOf(task), task.metadata && Object.values(task.metadata).join(' ')].join(' ').toLowerCase(); }
+  function taskSearchText(task) { return [taskTitle(task), task.task_id, task.backend || 'go', sourceOf(task), task.metadata && Object.values(task.metadata).join(' ')].join(' ').toLowerCase(); }
 
   function renderTasks() {
     const host = $('#task-list'); host.replaceChildren(); const query = $('#task-search').value.trim().toLowerCase();
@@ -64,6 +64,7 @@
       const id = document.createElement('span'); id.className = 'task-id'; id.textContent = safeText(task.task_id); line.append(id); main.append(line);
       const meta = document.createElement('div'); meta.className = 'task-meta';
       const src = document.createElement('span'); src.className = 'source-chip'; src.textContent = sourceOf(task); meta.append(src);
+      const backend = document.createElement('span'); backend.className = 'language-chip'; backend.textContent = task.backend === 'harbor' ? 'Harbor · 文件交付' : 'Go · 代码修复'; meta.append(backend);
       const language = (task.metadata && (task.metadata.language || task.metadata.lang)) || task.language;
       if (language) { const lang = document.createElement('span'); lang.className = 'language-chip'; lang.textContent = String(language); meta.append(lang); }
       if (task.revision) { const rev = document.createElement('span'); rev.textContent = `版本 ${String(task.revision).slice(0, 16)}`; meta.append(rev); }

@@ -1,3 +1,5 @@
+> v1.3 继续使用此控制台。Harbor 题包先按 [接入指南](HARBOR.md) 导入，重启 Runtime 后即可与 Go 任务一起选择、重复运行和保存方案；本版没有网页原始题包导入入口。
+
 # 本机控制台（v1.2）
 
 AgentEval 提供一个嵌入 Go Runtime 的中文网页控制台。前端资源随程序编译，不需要 Node.js、npm 或外部 CDN。启动 Runtime 后，在本机浏览器打开 `http://127.0.0.1:8787/`（端口以配置文件 `server.listen` 为准）。

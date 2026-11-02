@@ -1,10 +1,14 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -123,6 +127,79 @@ func TestLLMToolLoopFinish(t *testing.T) {
 	}
 	if strings.Contains(trace, "secret-test-key") || !strings.Contains(trace, "[redacted]") || !strings.Contains(trace, `"result":`) {
 		t.Fatalf("trace should be useful and redact secret fields: %s", trace)
+	}
+}
+
+func TestLLMReadImageReturnsImageURLAfterToolResult(t *testing.T) {
+	var imageBytes bytes.Buffer
+	img := image.NewNRGBA(image.Rect(0, 0, 2, 2))
+	img.SetNRGBA(0, 0, color.NRGBA{R: 255, A: 255})
+	if err := png.Encode(&imageBytes, img); err != nil {
+		t.Fatal(err)
+	}
+	box := &fakeBox{files: map[string][]byte{"assets/input.png": imageBytes.Bytes()}}
+	requests := 0
+	var secondMessages []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		var req struct {
+			Messages []map[string]any `json:"messages"`
+			Tools    []map[string]any `json:"tools"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Error(err)
+			return
+		}
+		if requests == 1 {
+			toolNames, _ := json.Marshal(req.Tools)
+			if !strings.Contains(string(toolNames), "read_image") {
+				t.Errorf("Harbor request is missing read_image definition: %s", toolNames)
+			}
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"image-call","type":"function","function":{"name":"read_image","arguments":"{\"path\":\"assets/input.png\",\"frame\":null}"}}]}}]}`))
+			return
+		}
+		secondMessages = req.Messages
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"finish-call","type":"function","function":{"name":"finish","arguments":"{\"summary\":\"image inspected\"}"}}]}}]}`))
+	}))
+	defer srv.Close()
+	var trace string
+	emit := func(_, _ string, data any) { b, _ := json.Marshal(data); trace += string(b) }
+	task := domain.Task{Backend: "harbor", Harbor: &domain.HarborSpec{Workdir: "/app"}, Prompt: "Inspect this image", Budget: domain.DefaultBudget()}
+	result, err := (LLM{Config: Config{BaseURL: srv.URL, Model: "test-model", APIKey: "secret"}}).Run(context.Background(), box, task, emit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Summary != "image inspected" || requests != 2 {
+		t.Fatalf("image tool loop did not finish: result=%+v requests=%d", result, requests)
+	}
+	toolIndex, imageIndex := -1, -1
+	for i, message := range secondMessages {
+		if message["role"] == "tool" && message["tool_call_id"] == "image-call" {
+			toolIndex = i
+		}
+		if message["role"] == "user" {
+			parts, ok := message["content"].([]any)
+			if !ok {
+				continue
+			}
+			for _, part := range parts {
+				partMap, _ := part.(map[string]any)
+				imageURL, _ := partMap["image_url"].(map[string]any)
+				url, _ := imageURL["url"].(string)
+				if strings.HasPrefix(url, "data:image/png;base64,") {
+					imageIndex = i
+				}
+			}
+		}
+	}
+	if toolIndex < 0 || imageIndex <= toolIndex {
+		t.Fatalf("tool result and following image_url part missing or misordered: %#v", secondMessages)
+	}
+	if strings.Contains(trace, "data:image") || strings.Contains(trace, "secret") {
+		t.Fatalf("trace must exclude image payload and credentials: %s", trace)
+	}
+	if got, want := estimateRequestTokens([]map[string]any{{"role": "user", "content": []any{map[string]any{"type": "image_url", "image_url": map[string]any{"url": "data:image/png;base64," + strings.Repeat("a", 100)}}}}}, nil), estimateRequestTokens([]map[string]any{{"role": "user", "content": []any{map[string]any{"type": "image_url", "image_url": map[string]any{"url": "data:image/png;base64," + strings.Repeat("a", 100000)}}}}}, nil); got != want {
+		t.Fatalf("image token estimate must use fixed budget, got small=%d large=%d", got, want)
 	}
 }
 

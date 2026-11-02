@@ -44,6 +44,9 @@ type Request struct {
 }
 
 type TaskSnapshot struct {
+	Backend           string `json:"backend,omitempty"`
+	PackageSHA256     string `json:"package_sha256,omitempty"`
+	VerifierImageID   string `json:"verifier_image_id,omitempty"`
 	TaskRevision      int    `json:"task_revision"`
 	ManifestSHA256    string `json:"manifest_sha256"`
 	SourceSHA256      string `json:"source_sha256"`
@@ -85,6 +88,7 @@ type Summary struct {
 }
 
 type TaskInfo struct {
+	Backend  string   `json:"backend,omitempty"`
 	ID       string   `json:"task_id"`
 	Revision int      `json:"revision"`
 	Prompt   string   `json:"prompt"`

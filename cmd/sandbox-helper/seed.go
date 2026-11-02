@@ -10,6 +10,7 @@ import (
 )
 
 func seedFromTar(root *os.Root, input io.Reader) error {
+	maxFile, maxTotal, maxFiles := workspaceLimits()
 	tr := tar.NewReader(io.LimitReader(input, maxTotal+(8<<20)))
 	total := int64(0)
 	files, entries := 0, 0
@@ -23,7 +24,7 @@ func seedFromTar(root *os.Root, input io.Reader) error {
 			return err
 		}
 		entries++
-		if entries > 3000 {
+		if int64(entries) > maxFiles*3 {
 			return fmt.Errorf("seed entry limit")
 		}
 		name := strings.TrimSuffix(h.Name, "/")
@@ -50,20 +51,34 @@ func seedFromTar(root *os.Root, input io.Reader) error {
 			if err := root.MkdirAll(safe, 0755); err != nil {
 				return err
 			}
+			if err := root.Chmod(safe, 0755); err != nil {
+				return err
+			}
 		case tar.TypeReg, tar.TypeRegA:
-			if h.Mode != 0644 {
+			if h.Mode != 0644 && h.Mode != 0755 {
 				return fmt.Errorf("seed regular mode policy")
 			}
 			files++
 			total += h.Size
-			if files > maxFiles || h.Size < 0 || h.Size > maxFile || total > maxTotal {
+			if int64(files) > maxFiles || h.Size < 0 || h.Size > maxFile || total > maxTotal {
 				return fmt.Errorf("seed size limit")
 			}
 			if err := root.MkdirAll(path.Dir(safe), 0755); err != nil {
 				return err
 			}
-			f, err := root.OpenFile(safe, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+			if existing, statErr := root.Lstat(safe); statErr == nil {
+				if !existing.Mode().IsRegular() {
+					return fmt.Errorf("seed target is not a regular file")
+				}
+			} else if !os.IsNotExist(statErr) {
+				return statErr
+			}
+			f, err := root.OpenFile(safe, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(h.Mode))
 			if err != nil {
+				return err
+			}
+			if err = f.Chmod(os.FileMode(h.Mode)); err != nil {
+				_ = f.Close()
 				return err
 			}
 			_, err = io.CopyN(f, tr, h.Size)

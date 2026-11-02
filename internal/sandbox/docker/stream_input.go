@@ -1,11 +1,11 @@
 package docker
 
 import (
-	"github.com/jensen-Zeng/agent-eval-runtime/internal/sandbox"
 	"context"
 	"fmt"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/jensen-Zeng/agent-eval-runtime/internal/sandbox"
 	"io"
 	"time"
 )
@@ -13,7 +13,7 @@ import (
 // Stream directly into the helper running in the mounted workspace. Docker's
 // archive copy API does not reliably target a container's running tmpfs mounts.
 func (s *instance) execStreamInput(ctx context.Context, argv []string, input io.Reader) (sandbox.ExecResult, error) {
-	created, err := s.cli.ContainerExecCreate(ctx, s.id, types.ExecConfig{Cmd: argv, AttachStdin: true, AttachStdout: true, AttachStderr: true})
+	created, err := s.cli.ContainerExecCreate(ctx, s.id, types.ExecConfig{Cmd: argv, Env: s.helperEnv(), AttachStdin: true, AttachStdout: true, AttachStderr: true})
 	if err != nil {
 		return sandbox.ExecResult{}, err
 	}

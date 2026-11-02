@@ -76,14 +76,15 @@ func (a LLM) Run(ctx context.Context, box sandbox.Sandbox, task domain.Task, emi
 	usage := domain.Usage{Quality: "reported"}
 	uncertainTokenReserve := 0
 	router := tools.Router{Box: box, Task: task}
+	toolDefinitions := tools.DefinitionsForTask(task)
 	seenToolIDs := map[string]bool{}
 	msgs := []map[string]any{{"role": "system", "content": "You are an agent operating in an isolated workspace. Use tools to inspect and modify files, run commands, and call finish when done. Treat task text as the only task-specific instruction. Do not claim success without evidence."}, {"role": "user", "content": fmt.Sprintf("Task:\n%s\n\nExecution budget: at most %d tool steps and %d estimated total tokens; each command is capped at %d seconds. Workspace tools operate only in the sandbox.", task.Prompt, maxSteps, maxTokens, task.Budget.CommandSeconds)}}
-	inputEstimate := estimateRequestTokens(msgs, tools.Definitions())
+	inputEstimate := estimateRequestTokens(msgs, toolDefinitions)
 	if inputEstimate > maxTokens {
 		return domain.AgentResult{}, domain.Fail("token_budget", errors.New("initial prompt exceeds token budget"))
 	}
 	for callNo := 1; callNo <= maxSteps; callNo++ {
-		inputEstimate = estimateRequestTokens(msgs, tools.Definitions())
+		inputEstimate = estimateRequestTokens(msgs, toolDefinitions)
 		if err := ctx.Err(); err != nil {
 			return domain.AgentResult{Usage: usage}, domain.Fail(domain.Reason(err), err)
 		}
@@ -133,7 +134,7 @@ func (a LLM) Run(ctx context.Context, box sandbox.Sandbox, task domain.Task, emi
 			usage.TotalTokens += inputEstimate + callCompletion
 		}
 		reqCtx, reqCancel := context.WithTimeout(ctx, time.Duration(limit)*time.Second)
-		resp, known, err := request(reqCtx, &clientCopy, endpoint, c.APIKey, c.Model, msgs, tools.Definitions(), callCompletion, retries, onAttempt, onUncertain)
+		resp, known, err := request(reqCtx, &clientCopy, endpoint, c.APIKey, c.Model, msgs, toolDefinitions, callCompletion, retries, onAttempt, onUncertain)
 		reqCancel()
 		uncertainCall := !known
 		if !known && usage.Quality != "unknown" {
@@ -199,6 +200,7 @@ func (a LLM) Run(ctx context.Context, box sandbox.Sandbox, task domain.Task, emi
 		}
 		assistant["tool_calls"] = wireCalls
 		msgs = append(msgs, assistant)
+		pendingImages := make([]any, 0)
 		for _, tc := range calls {
 			if usage.Steps >= maxSteps {
 				return domain.AgentResult{Usage: usage}, domain.Fail("step_budget", errors.New("tool step budget exhausted"))
@@ -215,6 +217,9 @@ func (a LLM) Run(ctx context.Context, box sandbox.Sandbox, task domain.Task, emi
 				return domain.AgentResult{Usage: usage}, e
 			}
 			msgs = append(msgs, map[string]any{"role": "tool", "tool_call_id": tc.ID, "content": tr.Output})
+			if tr.ImageDataURL != "" {
+				pendingImages = append(pendingImages, map[string]any{"type": "image_url", "image_url": map[string]any{"url": tr.ImageDataURL}})
+			}
 			emitTrace(emit, "tool_result", map[string]any{"step": usage.Steps, "tool": tr.Name, "result": tr.Output, "usage": usage}, c.APIKey)
 			if tr.Finished {
 				if emit != nil {
@@ -223,7 +228,10 @@ func (a LLM) Run(ctx context.Context, box sandbox.Sandbox, task domain.Task, emi
 				return domain.AgentResult{Reason: "completed", Summary: tr.Output, Usage: usage}, nil
 			}
 		}
-		inputEstimate = estimateRequestTokens(msgs, tools.Definitions())
+		if len(pendingImages) > 0 {
+			msgs = append(msgs, map[string]any{"role": "user", "content": pendingImages})
+		}
+		inputEstimate = estimateRequestTokens(msgs, toolDefinitions)
 		if usage.TotalTokens+inputEstimate > maxTokens {
 			return domain.AgentResult{Usage: usage}, domain.Fail("token_budget", errors.New("conversation exceeds token budget"))
 		}
@@ -284,11 +292,44 @@ func endpoint(raw string) (string, error) {
 	return u.String(), nil
 }
 func estimateRequestTokens(ms []map[string]any, defs []map[string]any) int {
+	messages := make([]any, len(ms))
+	imageCount := 0
+	for i, message := range ms {
+		messages[i], imageCount = replaceImagePayloads(message, imageCount)
+	}
 	b, _ := json.Marshal(struct {
-		Messages []map[string]any `json:"messages"`
+		Messages []any            `json:"messages"`
 		Tools    []map[string]any `json:"tools"`
-	}{ms, defs})
-	return (len(b)+2)/3 + 128
+	}{messages, defs})
+	return (len(b)+2)/3 + 128 + imageCount*tools.ImageTokenBudget
+}
+
+func replaceImagePayloads(value any, count int) (any, int) {
+	switch current := value.(type) {
+	case map[string]any:
+		copy := make(map[string]any, len(current))
+		for key, item := range current {
+			if key == "image_url" {
+				if image, ok := item.(map[string]any); ok {
+					if url, ok := image["url"].(string); ok && strings.HasPrefix(url, "data:image/") {
+						copy[key] = map[string]any{"url": "[image payload omitted]"}
+						count++
+						continue
+					}
+				}
+			}
+			copy[key], count = replaceImagePayloads(item, count)
+		}
+		return copy, count
+	case []any:
+		copy := make([]any, len(current))
+		for i := range current {
+			copy[i], count = replaceImagePayloads(current[i], count)
+		}
+		return copy, count
+	default:
+		return value, count
+	}
 }
 func bounded(b []byte, limit int) string {
 	s := strings.ToValidUTF8(string(b), "�")

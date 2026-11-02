@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/jensen-Zeng/agent-eval-runtime/internal/domain"
+	"github.com/jensen-Zeng/agent-eval-runtime/internal/harbor"
 	"github.com/jensen-Zeng/agent-eval-runtime/internal/sandbox"
 )
 
@@ -144,6 +145,12 @@ func Load(manifest, projectRoot string) (domain.Task, error) {
 	defer f.Close()
 	if err = DecodeStrict(f, &t); err != nil {
 		return t, err
+	}
+	if t.Backend == "harbor" {
+		return harbor.Load(t, manifest, projectRoot)
+	}
+	if (t.Backend != "" && t.Backend != "go") || t.Harbor != nil {
+		return t, fmt.Errorf("unsupported task backend")
 	}
 	if t.SchemaVersion != 1 || !taskID.MatchString(t.ID) || t.Revision < 1 || strings.TrimSpace(t.Prompt) == "" || len(t.Prompt) > 32768 {
 		return t, fmt.Errorf("invalid task identity/schema/prompt")

@@ -44,12 +44,12 @@
         <div class="workspace-grid">
           <section class="panel task-panel">
             <div class="panel-heading task-heading">
-              <div><h2>选择评测任务</h2><p>可跨数据集选择；每项任务使用已登记的固定环境与预算。</p></div>
+              <div><h2>选择评测任务</h2><p>支持 Go 与 Harbor 任务；每项任务使用已登记的固定环境与预算。</p></div>
               <div class="task-actions"><button class="text-button" id="select-all">全选</button><span class="muted-separator">·</span><button class="text-button" id="clear-tasks">清空</button></div>
             </div>
             <div class="task-toolbar"><label class="search-box"><span>⌕</span><input id="task-search" type="search" placeholder="搜索任务名称或来源…" autocomplete="off"><kbd>⌘ K</kbd></label><span class="selection-count" id="selection-count">已选 0 项</span></div>
             <div class="task-list" id="task-list"><div class="loading-state"><span class="spinner"></span>正在加载任务…</div></div>
-            <div class="task-footer"><span class="muted-text" id="task-footer-note">任务的镜像与资源限制由登记信息确定</span><button class="text-button" id="reload-tasks">重新加载</button></div>
+            <div class="task-footer"><span class="muted-text" id="task-footer-note">Harbor 题包导入并重启服务后可在此选择</span><button class="text-button" id="reload-tasks">重新加载</button></div>
           </section>
 
           <aside class="setup-column">

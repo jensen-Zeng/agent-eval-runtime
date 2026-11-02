@@ -144,3 +144,41 @@ func TestSeedFromTarWritesOnlyRegularOwnedFiles(t *testing.T) {
 		t.Fatalf("seeded mode=%o, want 0644", info.Mode().Perm())
 	}
 }
+
+func TestSeedFromTarUsesHarborFileLimitsAndExecutableMode(t *testing.T) {
+	t.Setenv("AGENTEVAL_HARBOR", "1")
+	body := make([]byte, (1<<20)+31)
+	entry := safeSeedFile("run.sh", body)
+	entry.header.Mode = 0755
+	root, err := runSeedArchive(t, seedArchive(t, entry))
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(root, "run.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0755 {
+		t.Fatalf("seeded mode=%o, want 0755", info.Mode().Perm())
+	}
+}
+
+func TestSeedFromTarOverwritesRegularImageSeedFiles(t *testing.T) {
+	t.Setenv("AGENTEVAL_HARBOR", "1")
+	rootPath := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootPath, "initial.json"), []byte("image"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(rootPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if err := seedFromTar(root, bytes.NewReader(seedArchive(t, safeSeedFile("initial.json", []byte("submission"))))); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(rootPath, "initial.json"))
+	if err != nil || string(got) != "submission" {
+		t.Fatalf("overlaid image seed=%q err=%v", got, err)
+	}
+}

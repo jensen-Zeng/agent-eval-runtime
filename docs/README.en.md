@@ -4,13 +4,14 @@
 
 A Go-based local platform for running code-repair agents in restricted Docker containers and evaluating their changes in separate trusted evaluator containers.
 
-Version 1.2.0 includes a CLI, a PostgreSQL-backed job queue, a local HTTP API, and an embedded Chinese web console. The current task runtime supports Go code-repair tasks in Linux amd64 containers. Windows and Linux use the same controller implementation.
+Version 1.3.0 includes a CLI, a PostgreSQL-backed job queue, a local HTTP API, and an embedded Chinese web console. Its task backends include Go code-repair tasks and a constrained Harbor `T3-RL-v1.0` subset running in Linux amd64 containers. Windows and Linux use the same controller implementation.
 
 ## Features
 
 - Scripted demos and an OpenAI-compatible tool-calling agent.
 - Time, process, CPU, memory, file, output, and token budgets.
 - Independent grading with registered Go tests or a trusted Python grader.
+- Local CLI import of Harbor packages using separate agent and verifier images, `/app` workspaces, and programmatic continuous rewards. Restart the service after import; the web console selects registered tasks and does not upload/import raw Harbor packages.
 - Frozen task × model × repetition experiments, resume, and JSON/CSV summaries.
 - Persistent jobs, cancellation, leases, heartbeats, fencing, and container reconciliation.
 - Execution traces, candidate patches, sampled resource usage, input hashes, and evidence exports.
@@ -43,7 +44,9 @@ After the initial image preparation, Windows users can also use `打开控制台
 
 ## Boundaries
 
-This is a trusted-operator, local single-user platform. Containers share the Linux kernel; the Docker daemon, registered graders, and images are trusted. It is not a public multi-tenant service. Real paid-model benchmarks, multi-host workers, and general multi-language task execution are not included in the current validation scope.
+This is a trusted-operator, local single-user platform. Containers share the Linux kernel; the Docker daemon, registered graders, and images are trusted. It is not a public multi-tenant service. Harbor support is limited to the documented T3-RL-v1.0 subset; shared verifiers, network-enabled tasks, LLM judges, prebuilt-image-only packages, and other Harbor schemas are unsupported. Real paid-model capability runs, multi-host workers, and general multi-language task execution are not included in the current validation scope.
+
+Harbor task packages can include images read through the agent's PNG/JPEG/GIF tool (GIF frames 0–31). The model API accepts text and tool results; video and audio are not native message inputs and require in-container processing through `exec`. See the [Harbor guide](HARBOR.md) for import, resource, scoring, and evidence details.
 
 Only three owned Go demo tasks are distributed. Imported assignment packages, private graders, credentials, and execution artifacts remain local. See [third-party notices](../THIRD_PARTY_NOTICES.md).
 

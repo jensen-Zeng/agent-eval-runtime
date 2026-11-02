@@ -1,0 +1,50 @@
+version = "T3-RL-v1.0"
+artifacts = ["/app"]
+
+[topic]
+L1 = "Agent"
+L2 = "CodeAgent"
+L3 = "FileArtifacts"
+
+[metadata]
+author_name = "Jensen Zeng"
+instance_id = "harbor-file-artifacts"
+task = "Produce a JSON result and a binary artifact"
+source = "Original AgentEval Runtime demonstration"
+language = "en"
+prompt_creation_time = "2026-11-03"
+
+[environment]
+cpus = 1
+memory_mb = 1024
+storage_mb = 1024
+workdir = "/app"
+network_mode = "no-network"
+skip_upload = false
+
+[environment.upload]
+source = "environment/workspace"
+target = "/app"
+
+[environment.env]
+PYTHONDONTWRITEBYTECODE = "1"
+
+[agent]
+timeout_sec = 120.0
+
+[verifier]
+environment_mode = "separate"
+timeout_sec = 30.0
+
+[judge]
+type = "programmatic"
+reward_kind = "continuous"
+
+[other]
+grader = "tests/grade.py"
+required_outputs = ["answer.json", "answer.bin"]
+
+[rollout_baseline.oracle]
+reward = 1.0
+[rollout_baseline.nop]
+reward = 0.0

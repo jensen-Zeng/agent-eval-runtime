@@ -2,19 +2,20 @@
 
 [![Go CI](https://github.com/jensen-Zeng/agent-eval-runtime/actions/workflows/go.yml/badge.svg)](https://github.com/jensen-Zeng/agent-eval-runtime/actions/workflows/go.yml) · [MIT License](LICENSE) · [English overview](docs/README.en.md)
 
-AgentEval Runtime 1.2.0 是一个用 Go 编写的本机 Agent 执行与评测平台。它把代码修复任务放进受限的 Linux 容器，收集 Agent 生成的补丁，再在独立评测环境里运行可信测试。平台面向本机开发与实验，重点记录任务结果、执行轨迹、资源和可复核证据。
+AgentEval Runtime 1.3.0 是一个用 Go 编写的本机 Agent 执行与评测平台。它将 Agent 任务放入受限的 Linux 容器，在独立评测环境中运行可信评分，并记录任务结果、执行轨迹、资源和可复核证据。
 
 当前提供命令行、HTTP 队列服务和嵌入式中文网页。确定性 Scripted Agent 可在没有模型 Key 时运行；真实模型实验需自行配置 OpenAI-compatible 服务，并可能产生费用。
 
 ## 能力与边界
 
 - Go 代码修复任务，附带三个可直接演示的题目：`go-parser-001`、`go-unique-002`、`go-range-003`。
+- Harbor `T3-RL-v1.0` 受限子集：独立 Agent/verifier 镜像、`/app` 工作区、程序化连续评分和 submission 归档；通过 CLI 本机导入，重启服务后可在网页实验台选择。
 - Docker sandbox、独立可信评测、超时和资源限制、轨迹与 JSON 报告。
 - PostgreSQL 持久队列、有界 worker pool、取消、重启恢复与资源对账。
 - 冻结任务输入的实验矩阵、多模型重复运行、恢复未完成实验、JSON/CSV 汇总和证据导出。
 - 本机网页用于配置模型连接、组织实验和查看结果；Go 程序内嵌前端资源，不需要 Node.js 或 npm。
 
-运行任务使用 Linux amd64 Docker 容器。控制端源码与构建支持 Windows 和 Linux；Linux 宿主端到端验证仍在推进。源码任务目前以 Go 为主；任务清单可以描述其他格式，但这不代表平台已支持对应语言的执行和评分。项目面向可信的本机操作者，不提供公网多租户服务或独立虚拟机隔离。
+运行任务使用 Linux amd64 Docker 容器。任务后端目前包括 Go 代码任务和 Harbor `T3-RL-v1.0` 子集；不代表支持任意语言或全部 Harbor 格式。Harbor 原始题包通过 CLI 导入，本版网页只选择已登记任务。控制端源码与构建支持 Windows 和 Linux；Linux 宿主端到端验证仍在推进。项目面向可信的本机操作者，不提供公网多租户服务或独立虚拟机隔离。
 
 ## 架构
 
@@ -92,7 +93,7 @@ bash ./scripts/start.sh
 
 ## 实验流程
 
-1. 在实验台选择已经登记的 Go 任务，设置模型和重复次数。只有题目登记了 `baseline` 脚本时，才能在网页选择该 baseline；自带 `go-*` fixture 的无 Key Scripted 示例见下面的 CLI 矩阵。
+1. 在实验台选择已经登记的 Go 或 Harbor 任务，设置模型和重复次数。Harbor 与 Go 任务可混合组成实验；基线无需模型 Key。自带 `go-*` fixture 的 Scripted 示例见下面的 CLI 矩阵。
 2. 启动实验。每个任务、Agent 配置和重复次数会建立独立 job；结果包括评分、耗时、资源数据和执行事件。
 3. 在运行记录查看结果、恢复未完成的实验，或导出 JSON/CSV 和证据包。
 
@@ -117,6 +118,8 @@ bash ./scripts/start.sh
 ```
 
 中断后使用相同矩阵和输出文件，并加 `--resume` 收集原实验结果。要重新执行并产生新的 jobs，应创建新的实验输出文件。数据集导入和依赖镜像准备流程见数据集指南；通用清单示例仅供按自己的数据目录修改，不能直接当成可运行题包。
+
+Harbor 题包的兼容范围、静态检查、本地镜像导入、资源覆盖、评分结果与证据说明见 [Harbor 接入指南](docs/HARBOR.md)。导入后需重启 Runtime；网页不直接导入原始题包。Harbor 的图像工具支持 PNG/JPEG 和 GIF 第 0–31 帧；视频/音频没有原生多模态消息接口，可在容器内用 `exec` 调用可用工具处理。
 
 ## 目录
 
@@ -147,6 +150,7 @@ artifacts/                 本地运行、实验与导出结果
 - [命令行与配置参考](docs/CLI_REFERENCE.md)
 - [网页控制台指南](docs/WEB_UI.md)
 - [数据集适配与实验指南](docs/DATASETS.md)
+- [Harbor T3-RL-v1.0 接入指南](docs/HARBOR.md)
 - [v1.0 安全与性能边界](docs/V1.0_RELEASE.md)
 - [项目执行计划](docs/EXECUTION_PLAN.md)
 - [架构决策记录](docs/decisions/0001-v01-boundaries.md)

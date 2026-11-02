@@ -1,8 +1,6 @@
 package main
 
 import (
-	"github.com/jensen-Zeng/agent-eval-runtime/internal/jobs"
-	"github.com/jensen-Zeng/agent-eval-runtime/internal/runner"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,6 +8,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/jensen-Zeng/agent-eval-runtime/internal/jobs"
+	"github.com/jensen-Zeng/agent-eval-runtime/internal/runner"
 	"io"
 	"os"
 	"path/filepath"
@@ -76,7 +76,15 @@ func executeExport(ctx context.Context, args []string, out, errout io.Writer) in
 	if !exportTerminalStatus(report.Status) || report.FinishedAt.IsZero() {
 		return fail(fmt.Errorf("run report is incomplete"))
 	}
-	patchPath, ok := report.Artifacts["patch"]
+	payloadKind, payloadHash, payloadLimit := "patch", report.PatchSHA256, int64(exportMaxPatch)
+	exportName := "candidate.diff"
+	if report.Backend == "harbor" {
+		payloadKind = "submission"
+		payloadHash = report.SubmissionSHA256
+		payloadLimit = 72 << 20
+		exportName = "submission.tar.gz"
+	}
+	patchPath, ok := report.Artifacts[payloadKind]
 	if !ok {
 		return fail(fmt.Errorf("run report is missing patch artifact"))
 	}
@@ -84,12 +92,12 @@ func executeExport(ctx context.Context, args []string, out, errout io.Writer) in
 	if !ok {
 		return fail(fmt.Errorf("run report is missing trace artifact"))
 	}
-	patchBytes, err := exportReadRegular(root, patchPath, exportMaxPatch)
+	patchBytes, err := exportReadRegular(root, patchPath, payloadLimit)
 	if err != nil {
 		return fail(fmt.Errorf("read patch artifact: %w", err))
 	}
 	patchHash := sha256.Sum256(patchBytes)
-	if report.PatchSHA256 == "" || hex.EncodeToString(patchHash[:]) != report.PatchSHA256 {
+	if payloadHash == "" || hex.EncodeToString(patchHash[:]) != payloadHash {
 		return fail(fmt.Errorf("patch SHA256 does not match run report"))
 	}
 	traceBytes, err := exportReadRegular(root, tracePath, exportMaxTrace)
@@ -98,7 +106,7 @@ func executeExport(ctx context.Context, args []string, out, errout io.Writer) in
 	}
 	files := map[string]exportFile{
 		"run.json":         {data: resultBytes, source: "result.json"},
-		"candidate.diff":   {data: patchBytes, source: patchPath},
+		exportName:         {data: patchBytes, source: patchPath},
 		"trajectory.jsonl": {data: traceBytes, source: tracePath},
 	}
 	if evalPath, exists := report.Artifacts["evaluation"]; exists {
@@ -446,6 +454,9 @@ func experimentRunMatchesEntry(path, runID string, e experimentEntry) error {
 	}
 	if r.RunID != runID || r.TaskID != e.Case.TaskID || r.TaskRevision != e.TaskSnapshot.TaskRevision || r.SourceSHA256 != e.TaskSnapshot.SourceSHA256 || r.EvaluatorSHA256 != e.TaskSnapshot.EvaluatorSHA256 || r.ImageID != e.TaskSnapshot.ImageID || r.AgentConfigSHA256 != e.TaskSnapshot.AgentConfigSHA256 || r.Agent != e.Case.Agent {
 		return fmt.Errorf("run report identity or frozen task snapshot does not match experiment entry")
+	}
+	if e.TaskSnapshot.Backend == "harbor" && (r.Backend != "harbor" || r.PackageSHA256 != e.TaskSnapshot.PackageSHA256 || r.VerifierImageID != e.TaskSnapshot.VerifierImageID) {
+		return fmt.Errorf("Harbor run package or verifier image differs from frozen experiment")
 	}
 	return nil
 }

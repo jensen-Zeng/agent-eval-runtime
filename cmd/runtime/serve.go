@@ -60,15 +60,37 @@ func newTaskRegistry(root string, c config.Config, imageID string) (*taskRegistr
 	if err != nil {
 		return nil, err
 	}
-	reg := &taskRegistry{loaded: map[string]domain.Task{}, hashes: map[string]string{}, root: root, manifests: map[string]string{}, config: c, imageID: imageID}
+	manifests := []string{}
 	for _, entry := range entries {
 		if entry.Type()&os.ModeSymlink != 0 {
 			return nil, fmt.Errorf("task registry links are forbidden")
 		}
-		if !entry.IsDir() {
-			continue
+		if entry.IsDir() {
+			manifests = append(manifests, filepath.Join(dir, entry.Name(), "task.json"))
 		}
-		manifest := filepath.Join(dir, entry.Name(), "task.json")
+	}
+	harborDir := filepath.Join(root, "tasks", "harbor")
+	if hi, e := os.Lstat(harborDir); e == nil {
+		if !hi.IsDir() || hi.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("Harbor registry must be a real directory")
+		}
+		hs, e := os.ReadDir(harborDir)
+		if e != nil {
+			return nil, e
+		}
+		for _, h := range hs {
+			if h.Type()&os.ModeSymlink != 0 {
+				return nil, fmt.Errorf("Harbor registry links forbidden")
+			}
+			if h.IsDir() {
+				manifests = append(manifests, filepath.Join(harborDir, h.Name(), "task.json"))
+			}
+		}
+	} else if !errors.Is(e, os.ErrNotExist) {
+		return nil, e
+	}
+	reg := &taskRegistry{loaded: map[string]domain.Task{}, hashes: map[string]string{}, root: root, manifests: map[string]string{}, config: c, imageID: imageID}
+	for _, manifest := range manifests {
 		info, err := os.Lstat(manifest)
 		if errors.Is(err, os.ErrNotExist) {
 			continue
@@ -82,7 +104,7 @@ func newTaskRegistry(root string, c config.Config, imageID string) (*taskRegistr
 		}
 		loaded, err := task.Load(manifest, root)
 		if err != nil {
-			return nil, fmt.Errorf("task %s: %w", entry.Name(), err)
+			return nil, fmt.Errorf("task %s: %w", filepath.Base(filepath.Dir(manifest)), err)
 		}
 		if _, exists := reg.manifests[loaded.ID]; exists {
 			return nil, fmt.Errorf("duplicate task ID")
@@ -111,7 +133,7 @@ func newTaskRegistry(root string, c config.Config, imageID string) (*taskRegistr
 		reg.loaded[loaded.ID] = loaded
 		reg.hashes[loaded.ID] = digest(bytes)
 		reg.manifests[loaded.ID] = manifest
-		reg.infos = append(reg.infos, jobs.TaskInfo{ID: loaded.ID, Revision: loaded.Revision, Prompt: loaded.Prompt, Scripts: scripts})
+		reg.infos = append(reg.infos, jobs.TaskInfo{Backend: loaded.Backend, ID: loaded.ID, Revision: loaded.Revision, Prompt: loaded.Prompt, Scripts: scripts})
 	}
 	if len(reg.infos) == 0 {
 		return nil, fmt.Errorf("no registered tasks")
@@ -185,6 +207,12 @@ func (r *taskRegistry) selectTask(req jobs.Request) (jobs.Request, domain.Task, 
 		return req, loaded, nil, nil, empty, jobs.ErrUnavailable
 	}
 	snapshot := jobs.TaskSnapshot{TaskRevision: loaded.Revision, ManifestSHA256: r.hashes[req.TaskID], SourceSHA256: loaded.SourceSHA256, EvaluatorSHA256: loaded.EvaluatorSHA256, ImageID: r.imageID, AgentConfigSHA256: digest(encoded)}
+	if loaded.IsHarbor() {
+		snapshot.Backend = "harbor"
+		snapshot.PackageSHA256 = loaded.Harbor.PackageSHA256
+		snapshot.VerifierImageID = loaded.Harbor.VerifierImage
+		snapshot.ImageID = loaded.Harbor.AgentImage
+	}
 	return req, loaded, selected, public, snapshot, nil
 }
 

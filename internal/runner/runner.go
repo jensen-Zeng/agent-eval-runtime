@@ -2,10 +2,6 @@
 package runner
 
 import (
-	"github.com/jensen-Zeng/agent-eval-runtime/internal/domain"
-	"github.com/jensen-Zeng/agent-eval-runtime/internal/evaluator"
-	"github.com/jensen-Zeng/agent-eval-runtime/internal/patch"
-	"github.com/jensen-Zeng/agent-eval-runtime/internal/sandbox"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -13,6 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jensen-Zeng/agent-eval-runtime/internal/domain"
+	"github.com/jensen-Zeng/agent-eval-runtime/internal/evaluator"
+	"github.com/jensen-Zeng/agent-eval-runtime/internal/patch"
+	"github.com/jensen-Zeng/agent-eval-runtime/internal/sandbox"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const Version = "1.2.0"
+const Version = "1.3.0"
 
 type ResourceSummary struct {
 	CPUSeconds             *float64 `json:"cpu_seconds"`
@@ -30,6 +30,10 @@ type ResourceSummary struct {
 	OOMKilled              bool     `json:"oom_killed"`
 }
 type Report struct {
+	Backend           string                      `json:"backend,omitempty"`
+	PackageSHA256     string                      `json:"package_sha256,omitempty"`
+	VerifierImageID   string                      `json:"verifier_image_id,omitempty"`
+	SubmissionSHA256  string                      `json:"submission_sha256,omitempty"`
 	Metadata          map[string]string           `json:"metadata,omitempty"`
 	Environment       domain.ExecutionEnvironment `json:"environment,omitempty"`
 	SchemaVersion     int                         `json:"schema_version"`
@@ -89,6 +93,11 @@ func Run(parent context.Context, f sandbox.Factory, t domain.Task, a domain.Agen
 	configBytes, _ := json.Marshal(opts.AgentConfig)
 	configHash := sha256.Sum256(configBytes)
 	report = Report{Metadata: t.Metadata, Environment: t.Environment, SchemaVersion: 1, Version: Version, RunID: id, AttemptID: id + "-1", TaskID: t.ID, TaskRevision: t.Revision, Status: "PREPARING", StartedAt: started.UTC(), PhaseMS: map[string]int64{}, SourceSHA256: t.SourceSHA256, EvaluatorSHA256: t.EvaluatorSHA256, Agent: opts.AgentName, AgentConfigSHA256: hex.EncodeToString(configHash[:]), Budget: t.Budget, Limits: t.Limits, Resources: map[string]ResourceSummary{}, CleanupStatus: "pending", ArtifactDir: abs, Artifacts: map[string]string{}}
+	if t.IsHarbor() {
+		report.Backend = "harbor"
+		report.PackageSHA256 = t.Harbor.PackageSHA256
+		report.VerifierImageID = t.Harbor.VerifierImage
+	}
 	trace, err := os.OpenFile(filepath.Join(attemptDir, "trace.jsonl"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return report, err
@@ -161,7 +170,7 @@ func Run(parent context.Context, f sandbox.Factory, t domain.Task, a domain.Agen
 		artifactError(traceErr)
 		artifactError(trace.Sync())
 		artifactError(trace.Close())
-		manifest := map[string]any{"schema_version": 1, "runtime_version": Version, "run_id": id, "task_id": t.ID, "task_revision": t.Revision, "image_id": report.ImageID, "source_sha256": t.SourceSHA256, "evaluator_sha256": t.EvaluatorSHA256, "patch_sha256": report.PatchSHA256, "agent_config_sha256": report.AgentConfigSHA256, "budget": t.Budget, "limits": t.Limits, "metadata": t.Metadata, "environment": t.Environment}
+		manifest := map[string]any{"schema_version": 1, "runtime_version": Version, "run_id": id, "task_id": t.ID, "task_revision": t.Revision, "image_id": report.ImageID, "source_sha256": t.SourceSHA256, "evaluator_sha256": t.EvaluatorSHA256, "patch_sha256": report.PatchSHA256, "agent_config_sha256": report.AgentConfigSHA256, "budget": t.Budget, "limits": t.Limits, "metadata": t.Metadata, "environment": t.Environment, "backend": report.Backend, "package_sha256": report.PackageSHA256, "verifier_image_id": report.VerifierImageID, "submission_sha256": report.SubmissionSHA256}
 		artifactError(WriteJSON(filepath.Join(abs, "manifest.json"), manifest))
 		md := fmt.Sprintf("# Run %s\n\nTask: %s r%d\n\nStatus: %s\n\nVerdict: %s (%s)\n\nDuration: %d ms\n\nCleanup: %s\n\nSee result.json and attempts/%s/trace.jsonl for evidence.\n", id, t.ID, t.Revision, report.Status, report.Verdict, report.Reason, report.WallMS, report.CleanupStatus, report.AttemptID)
 		artifactError(writeFile(filepath.Join(abs, "report.md"), []byte(md)))
@@ -215,6 +224,14 @@ func Run(parent context.Context, f sandbox.Factory, t domain.Task, a domain.Agen
 		}
 		report.ImageID = opts.Image
 	}
+	if t.IsHarbor() {
+		if strings.HasPrefix(opts.Image, "sha256:") && opts.Image != t.Harbor.AgentImage {
+			pcancel()
+			fail(domain.Fail("infra_error", fmt.Errorf("Harbor agent image differs from frozen task")), "prepare")
+			return
+		}
+		report.ImageID = t.Harbor.AgentImage
+	}
 	if info.OSType != "linux" || (info.Architecture != "x86_64" && info.Architecture != "amd64") {
 		pcancel()
 		fail(domain.Fail("infra_error", fmt.Errorf("Linux amd64 Engine required")), "prepare")
@@ -234,7 +251,15 @@ func Run(parent context.Context, f sandbox.Factory, t domain.Task, a domain.Agen
 	labels["agenteval.attempt"] = report.AttemptID
 	labels["agenteval.phase"] = "agent"
 	spec := sandbox.Spec{Image: report.ImageID, Labels: labels, Limits: t.Limits}
-	execution, err := f.Create(prepareCtx, spec, t.Source)
+	seed := t.Source
+	if t.IsHarbor() {
+		spec.Workdir = t.Workdir()
+		spec.Harbor = true
+		spec.ImageWorkspace = true
+		spec.Env = t.CommandEnvironment()
+		seed = nil
+	}
+	execution, err := f.Create(prepareCtx, spec, seed)
 	pcancel()
 	report.PhaseMS["prepare"] = time.Since(prepareStart).Milliseconds()
 	if err != nil {
@@ -249,7 +274,15 @@ func Run(parent context.Context, f sandbox.Factory, t domain.Task, a domain.Agen
 	report.Status = "RUNNING"
 	deadline, _ := runCtx.Deadline()
 	reserve := time.Duration(t.Budget.CollectSeconds+t.Budget.EvalSeconds+15) * time.Second
-	agentCtx, acancel := context.WithDeadline(runCtx, deadline.Add(-reserve))
+	agentDeadline := deadline.Add(-reserve)
+	if t.IsHarbor() {
+		// Cleanup is outside the Agent allowance in Harbor's declared budget.
+		seconds := t.Budget.RunSeconds - t.Budget.EvalSeconds - t.Budget.CollectSeconds - t.Budget.CleanupSeconds
+		if declared := agentStart.Add(time.Duration(seconds) * time.Second); declared.Before(agentDeadline) {
+			agentDeadline = declared
+		}
+	}
+	agentCtx, acancel := context.WithDeadline(runCtx, agentDeadline)
 	ar, err := a.Run(agentCtx, execution, t, emit)
 	acancel()
 	report.Usage = ar.Usage
@@ -273,20 +306,42 @@ func Run(parent context.Context, f sandbox.Factory, t domain.Task, a domain.Agen
 		fail(err, "collect")
 		return
 	}
-	candidate, err := patch.Generate(t.Source, current, t.AllowedFiles)
-	if err != nil {
-		fail(domain.Fail("invalid_patch", err), "collect")
-		return
+	var candidate string
+	var modes map[string]uint32
+	if t.IsHarbor() {
+		if source, ok := execution.(sandbox.ModeSnapshotter); ok {
+			modes = source.SnapshotModes()
+		}
+		submission, archiveErr := submissionArchive(current, modes)
+		if archiveErr != nil {
+			fail(domain.Fail("invalid_submission", archiveErr), "collect")
+			return
+		}
+		h := sha256.Sum256(submission)
+		report.SubmissionSHA256 = hex.EncodeToString(h[:])
+		name := "submission.tar.gz"
+		if err = writeFile(filepath.Join(attemptDir, name), submission); err != nil {
+			fail(domain.Fail("artifact_error", err), "collect")
+			return
+		}
+		report.Artifacts["submission"] = "attempts/" + report.AttemptID + "/" + name
+		emit("collect", "submission_collected", map[string]any{"sha256": report.SubmissionSHA256, "files": len(current), "archive_bytes": len(submission)})
+	} else {
+		candidate, err = patch.Generate(t.Source, current, t.AllowedFiles)
+		if err != nil {
+			fail(domain.Fail("invalid_patch", err), "collect")
+			return
+		}
+		ph := sha256.Sum256([]byte(candidate))
+		report.PatchSHA256 = hex.EncodeToString(ph[:])
+		patchFile := filepath.Join(attemptDir, "candidate.patch")
+		if err = writeFile(patchFile, []byte(candidate)); err != nil {
+			fail(domain.Fail("artifact_error", err), "collect")
+			return
+		}
+		report.Artifacts["patch"] = "attempts/" + report.AttemptID + "/candidate.patch"
+		emit("collect", "patch_collected", map[string]any{"sha256": report.PatchSHA256, "bytes": len(candidate)})
 	}
-	ph := sha256.Sum256([]byte(candidate))
-	report.PatchSHA256 = hex.EncodeToString(ph[:])
-	patchFile := filepath.Join(attemptDir, "candidate.patch")
-	if err = writeFile(patchFile, []byte(candidate)); err != nil {
-		fail(domain.Fail("artifact_error", err), "collect")
-		return
-	}
-	report.Artifacts["patch"] = "attempts/" + report.AttemptID + "/candidate.patch"
-	emit("collect", "patch_collected", map[string]any{"sha256": report.PatchSHA256, "bytes": len(candidate)})
 	// The task sandbox is never reused for evaluation. It also carries no trusted tests.
 	closeCtx, closeCancel := context.WithTimeout(context.Background(), time.Duration(t.Budget.CleanupSeconds)*time.Second)
 	err = execution.Destroy(closeCtx)
@@ -301,7 +356,15 @@ func Run(parent context.Context, f sandbox.Factory, t domain.Task, a domain.Agen
 	evalStart := time.Now()
 	evalCtx, ecancel := context.WithTimeout(runCtx, time.Duration(t.Budget.EvalSeconds)*time.Second)
 	defer ecancel()
-	evalSandbox, err := f.Create(evalCtx, spec, evaluator.Inputs(t))
+	evaluationInputs := evaluator.Inputs(t)
+	if t.IsHarbor() {
+		spec.Image = t.Harbor.VerifierImage
+		spec.WritableDirs = t.Harbor.VerifierTmpfs
+		spec.Env = t.Harbor.VerifierEnv
+		spec.FileModes = modes
+		evaluationInputs = current
+	}
+	evalSandbox, err := f.Create(evalCtx, spec, evaluationInputs)
 	if err != nil {
 		fail(err, "eval")
 		return

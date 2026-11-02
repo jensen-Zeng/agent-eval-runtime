@@ -14,9 +14,19 @@ import (
 )
 
 const (
-	maxFile  = 1 << 20
-	maxTotal = 50 << 20
-	maxFiles = 1000
+	goMaxFile      = 1 << 20
+	goMaxTotal     = 50 << 20
+	goMaxFiles     = 1000
+	harborMaxFile  = 16 << 20
+	harborMaxTotal = 64 << 20
+	harborMaxFiles = 4000
+)
+
+// Retained for the Go-mode seed unit tests and compatibility.
+const (
+	maxFile  = goMaxFile
+	maxTotal = goMaxTotal
+	maxFiles = goMaxFiles
 )
 
 type Request struct {
@@ -30,7 +40,25 @@ type Response struct {
 	Data  []byte            `json:"data,omitempty"`
 	Paths []string          `json:"paths,omitempty"`
 	Files map[string][]byte `json:"files,omitempty"`
+	Modes map[string]uint32 `json:"modes,omitempty"`
 	Error string            `json:"error,omitempty"`
+}
+
+func workspacePath() string {
+	p := os.Getenv("AGENTEVAL_WORKSPACE")
+	if p == "/app" {
+		return p
+	}
+	return "/workspace"
+}
+
+func harborMode() bool { return os.Getenv("AGENTEVAL_HARBOR") == "1" }
+
+func workspaceLimits() (maxFile, maxTotal, maxFiles int64) {
+	if harborMode() {
+		return harborMaxFile, harborMaxTotal, harborMaxFiles
+	}
+	return goMaxFile, goMaxTotal, goMaxFiles
 }
 
 func main() {
@@ -45,7 +73,7 @@ func main() {
 		}
 	}
 	if len(os.Args) == 2 && os.Args[1] == "--seed" {
-		root, err := os.OpenRoot("/workspace")
+		root, err := os.OpenRoot(workspacePath())
 		if err == nil {
 			defer root.Close()
 			err = seedFromTar(root, os.Stdin)
@@ -62,7 +90,7 @@ func main() {
 		respond(Response{Error: err.Error()})
 		return
 	}
-	r, e := os.OpenRoot("/workspace")
+	r, e := os.OpenRoot(workspacePath())
 	if e != nil {
 		respond(Response{Error: e.Error()})
 		return
@@ -105,6 +133,7 @@ func clean(p string) (string, error) {
 	return p, nil
 }
 func handle(root *os.Root, q Request) (Response, error) {
+	maxFile, maxTotal, maxFiles := workspaceLimits()
 	switch q.Op {
 	case "read":
 		p, e := clean(q.Path)
@@ -127,8 +156,8 @@ func handle(root *os.Root, q Request) (Response, error) {
 		if e != nil {
 			return Response{}, e
 		}
-		if len(b) > maxFile {
-			return Response{}, fmt.Errorf("file exceeds 1 MiB")
+		if int64(len(b)) > maxFile {
+			return Response{}, fmt.Errorf("file exceeds %d bytes", maxFile)
 		}
 		return Response{Data: b}, nil
 	case "write":
@@ -136,8 +165,8 @@ func handle(root *os.Root, q Request) (Response, error) {
 		if e != nil {
 			return Response{}, e
 		}
-		if len(q.Data) > maxFile {
-			return Response{}, fmt.Errorf("file exceeds 1 MiB")
+		if int64(len(q.Data)) > maxFile {
+			return Response{}, fmt.Errorf("file exceeds %d bytes", maxFile)
 		}
 		if e = root.MkdirAll(filepath.Dir(p), 0755); e != nil {
 			return Response{}, e
@@ -170,11 +199,12 @@ func handle(root *os.Root, q Request) (Response, error) {
 		if e != nil {
 			return Response{}, e
 		}
-		out := Response{Files: map[string][]byte{}}
+		out := Response{Files: map[string][]byte{}, Modes: map[string]uint32{}}
 		var total int64
 		var totalRead int64
 		count := 0
 		dirs := 0
+		maxDirs := int(maxFiles * 2)
 		var visit func(string) error
 		visit = func(dir string) error {
 			f, e := root.Open(dir)
@@ -195,16 +225,19 @@ func handle(root *os.Root, q Request) (Response, error) {
 				if d.Type()&os.ModeSymlink != 0 || !info.Mode().IsRegular() && !info.IsDir() {
 					return fmt.Errorf("unsupported file type: %s", full)
 				}
+				if harborMode() && info.IsDir() && isHarborCacheDir(d.Name()) {
+					continue
+				}
 				if info.IsDir() {
 					dirs++
 				} else {
 					count++
 				}
-				if dirs > 2000 {
+				if dirs > maxDirs {
 					return fmt.Errorf("workspace directory limit exceeded")
 				}
-				if count > maxFiles {
-					return fmt.Errorf("workspace exceeds 1000 files")
+				if int64(count) > maxFiles {
+					return fmt.Errorf("workspace exceeds %d files", maxFiles)
 				}
 				rel := filepath.ToSlash(full)
 				out.Paths = append(out.Paths, rel)
@@ -215,11 +248,11 @@ func handle(root *os.Root, q Request) (Response, error) {
 					continue
 				}
 				if info.Size() > maxFile {
-					return fmt.Errorf("file exceeds 1 MiB: %s", rel)
+					return fmt.Errorf("file exceeds %d bytes: %s", maxFile, rel)
 				}
 				total += info.Size()
 				if total > maxTotal {
-					return fmt.Errorf("workspace exceeds 50 MiB")
+					return fmt.Errorf("workspace exceeds %d bytes", maxTotal)
 				}
 				if q.Op == "snapshot" {
 					file, e := root.OpenFile(full, os.O_RDONLY|syscall.O_NONBLOCK, 0)
@@ -240,14 +273,15 @@ func handle(root *os.Root, q Request) (Response, error) {
 					if e != nil {
 						return e
 					}
-					if len(b) > maxFile {
-						return fmt.Errorf("file exceeds 1 MiB: %s", rel)
+					if int64(len(b)) > maxFile {
+						return fmt.Errorf("file exceeds %d bytes: %s", maxFile, rel)
 					}
 					totalRead += int64(len(b))
 					if totalRead > maxTotal {
-						return fmt.Errorf("workspace exceeds 50 MiB")
+						return fmt.Errorf("workspace exceeds %d bytes", maxTotal)
 					}
 					out.Files[rel] = b
+					out.Modes[rel] = uint32(st.Mode().Perm())
 				}
 			}
 			return nil
@@ -261,6 +295,7 @@ func handle(root *os.Root, q Request) (Response, error) {
 		}
 		if q.Op == "list" {
 			out.Files = nil
+			out.Modes = nil
 		}
 		return out, nil
 	case "patch":
@@ -273,6 +308,15 @@ func handle(root *os.Root, q Request) (Response, error) {
 		return Response{}, nil
 	default:
 		return Response{}, fmt.Errorf("unknown operation")
+	}
+}
+
+func isHarborCacheDir(name string) bool {
+	switch name {
+	case ".git", "__pycache__", ".pytest_cache", "node_modules", ".venv":
+		return true
+	default:
+		return false
 	}
 }
 func validatePatch(s string) error {

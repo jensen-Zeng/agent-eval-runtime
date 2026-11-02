@@ -6,6 +6,7 @@ require (
 	github.com/docker/docker v27.5.1+incompatible
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/opencontainers/image-spec v1.1.1
+	github.com/pelletier/go-toml/v2 v2.2.4
 )
 
 require (

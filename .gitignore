@@ -41,3 +41,6 @@ __pycache__/
 *.pyc
 __MACOSX/
 ._*
+
+# Operator-imported Harbor packages remain private
+/tasks/harbor/

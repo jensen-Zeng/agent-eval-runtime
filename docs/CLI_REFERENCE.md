@@ -1,3 +1,5 @@
+> v1.3 新增 `runtime harbor inspect` 与 `runtime harbor import`。Harbor 的镜像、文件交付与评分协议见 [接入指南](HARBOR.md)；下文 Go 补丁示例仍适用于 Go 后端。
+
 # CLI 与配置参考
 
 本指南补充 [项目首页](../README.md)。命令均从仓库根目录执行；先完成首页的依赖和镜像准备。版本历史中的本机验收原始记录不随仓库发布。

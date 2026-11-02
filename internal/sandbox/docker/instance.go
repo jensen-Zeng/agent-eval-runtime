@@ -11,21 +11,26 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jensen-Zeng/agent-eval-runtime/internal/sandbox"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/jensen-Zeng/agent-eval-runtime/internal/sandbox"
 )
 
 const streamLimit = 64 << 10
-const helperOutputLimit = 72 << 20
+const helperOutputLimit = 100 << 20
 
 type instance struct {
 	cli       *client.Client
 	id        string
 	mu        sync.Mutex
 	destroyed bool
+	workspace string
+	workdir   string
+	harbor    bool
+	modeMu    sync.RWMutex
+	modes     map[string]uint32
 }
 
 func (s *instance) ID() string { return s.id }
@@ -68,9 +73,13 @@ func (s *instance) Exec(ctx context.Context, q sandbox.ExecRequest) (sandbox.Exe
 	}
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	work := q.Workdir
-	if work == "" {
-		work = "/workspace"
+	root := s.workdir
+	if root == "" {
+		root = "/workspace"
+	}
+	work, err := resolveWorkdir(root, q.Workdir)
+	if err != nil {
+		return sandbox.ExecResult{}, err
 	}
 	lim := q.OutputLimit
 	if lim <= 0 || lim > streamLimit {
@@ -197,12 +206,25 @@ type helperResponse struct {
 	Data  []byte            `json:"data,omitempty"`
 	Paths []string          `json:"paths,omitempty"`
 	Files map[string][]byte `json:"files,omitempty"`
+	Modes map[string]uint32 `json:"modes,omitempty"`
 	Error string            `json:"error,omitempty"`
+}
+
+func (s *instance) helperEnv() []string {
+	root := s.workspace
+	if root == "" {
+		root = "/workspace"
+	}
+	env := []string{"AGENTEVAL_WORKSPACE=" + root}
+	if s.harbor {
+		env = append(env, "AGENTEVAL_HARBOR=1")
+	}
+	return env
 }
 
 func (s *instance) helper(ctx context.Context, q helperRequest) (helperResponse, error) {
 	b, _ := json.Marshal(q)
-	created, err := s.cli.ContainerExecCreate(ctx, s.id, types.ExecConfig{Cmd: []string{"/usr/local/bin/sandbox-helper"}, AttachStdin: true, AttachStdout: true, AttachStderr: true, Tty: false})
+	created, err := s.cli.ContainerExecCreate(ctx, s.id, types.ExecConfig{Cmd: []string{"/usr/local/bin/sandbox-helper"}, Env: s.helperEnv(), AttachStdin: true, AttachStdout: true, AttachStderr: true, Tty: false})
 	if err != nil {
 		return helperResponse{}, err
 	}
@@ -330,7 +352,27 @@ func (s *instance) readOOMKillCount(ctx context.Context) (uint64, error) {
 }
 func (s *instance) Snapshot(ctx context.Context) (sandbox.Files, error) {
 	r, e := s.helper(ctx, helperRequest{Op: "snapshot"})
-	return sandbox.Files(r.Files), e
+	if e != nil {
+		return nil, e
+	}
+	modes := make(map[string]uint32, len(r.Modes))
+	for name, mode := range r.Modes {
+		modes[name] = mode
+	}
+	s.modeMu.Lock()
+	s.modes = modes
+	s.modeMu.Unlock()
+	return sandbox.Files(r.Files), nil
+}
+
+func (s *instance) SnapshotModes() map[string]uint32 {
+	s.modeMu.RLock()
+	defer s.modeMu.RUnlock()
+	modes := make(map[string]uint32, len(s.modes))
+	for name, mode := range s.modes {
+		modes[name] = mode
+	}
+	return modes
 }
 func (s *instance) Stats(ctx context.Context) (sandbox.Stats, error) {
 	resp, e := s.cli.ContainerStatsOneShot(ctx, s.id)
