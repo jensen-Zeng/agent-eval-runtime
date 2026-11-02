@@ -52,11 +52,14 @@ func TestDockerOpenAIProtocolEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load trusted fixture: %v", err)
 	}
+	// CI may compile the Go standard library cold while image builds compete for CPU.
+	// Keep this integration allowance bounded without measuring compile time as a runtime SLA.
+	loaded.Budget.CommandSeconds = 120
 	writeArgs := successWriteFileArguments(t, loaded)
 	calls := []scriptedToolCall{
 		{name: "read_file", arguments: `{"path":"parser.go"}`},
 		{name: "write_file", arguments: writeArgs},
-		{name: "exec", arguments: `{"argv":["go","test","./..."],"workdir":null,"timeout_seconds":30}`},
+		{name: "exec", arguments: `{"argv":["go","test","./..."],"workdir":null,"timeout_seconds":120}`},
 		{name: "finish", arguments: `{"summary":"Implemented the parser fix and ran the visible tests."}`},
 	}
 
