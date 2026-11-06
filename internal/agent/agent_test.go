@@ -323,9 +323,12 @@ func TestRetriesTimeoutAndSecretRedaction(t *testing.T) {
 		task := domain.Task{Prompt: "x", Budget: domain.Budget{ModelSeconds: 1, MaxSteps: 2, MaxTokens: 10000, MaxOutputTokens: 100}}
 		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
 		defer cancel()
-		_, e := (LLM{Config: Config{BaseURL: s.URL, Model: "m", APIKey: "secret"}}).Run(ctx, &fakeBox{files: map[string][]byte{}}, task, nil)
+		result, e := (LLM{Config: Config{BaseURL: s.URL, Model: "m", APIKey: "secret"}}).Run(ctx, &fakeBox{files: map[string][]byte{}}, task, nil)
 		if domain.Reason(e) != "timeout" {
 			t.Fatalf("expected timeout, got %v", e)
+		}
+		if result.Usage.UncertainCalls != 1 || result.Usage.TotalTokens <= 0 || result.Usage.Quality != "unknown" {
+			t.Fatalf("timed-out request lost uncertain usage: %+v", result.Usage)
 		}
 	})
 }
@@ -380,6 +383,49 @@ func TestCanceledLLMContextIsNotReportedAsTimeout(t *testing.T) {
 	_, err := (LLM{Config: Config{BaseURL: "http://localhost:1", Model: "m", APIKey: "k"}}).Run(ctx, &fakeBox{files: map[string][]byte{}}, domain.Task{Prompt: "x", Budget: domain.DefaultBudget()}, nil)
 	if domain.Reason(err) != "canceled" {
 		t.Fatalf("expected canceled, got %v", err)
+	}
+}
+
+type cancelRequestTransport struct {
+	cancel   context.CancelFunc
+	readBody bool
+}
+
+func (transport cancelRequestTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	defer req.Body.Close()
+	if transport.readBody {
+		return &http.Response{StatusCode: http.StatusOK, Body: cancelResponseBody{transport.cancel}}, nil
+	}
+	transport.cancel()
+	return nil, context.Canceled
+}
+
+type cancelResponseBody struct{ cancel context.CancelFunc }
+
+func (body cancelResponseBody) Read([]byte) (int, error) {
+	body.cancel()
+	return 0, context.Canceled
+}
+
+func (cancelResponseBody) Close() error { return nil }
+
+func TestCanceledModelRequestPreservesUncertainUsage(t *testing.T) {
+	for _, readBody := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reading_body_%t", readBody), func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			client := &http.Client{Transport: cancelRequestTransport{cancel: cancel, readBody: readBody}}
+			result, err := (LLM{Config: Config{BaseURL: "https://example.test/v1", Model: "test", APIKey: "test-key", HTTPClient: client}}).Run(ctx, &fakeBox{files: map[string][]byte{}}, domain.Task{Prompt: "inspect", Budget: domain.DefaultBudget()}, nil)
+			if domain.Reason(err) != "canceled" {
+				t.Fatalf("expected cancellation, got %v", err)
+			}
+			if result.Usage.Quality != "unknown" || result.Usage.UncertainCalls != 1 || result.Usage.TotalTokens <= 0 {
+				t.Fatalf("in-flight cancellation lost uncertain usage: %+v", result.Usage)
+			}
+			if result.Usage.ModelCalls != 1 || result.Usage.ToolCalls != 0 || result.Usage.InputTokens != 0 || result.Usage.OutputTokens != 0 {
+				t.Fatalf("uncertain usage must not become reported tokens or tool calls: %+v", result.Usage)
+			}
+		})
 	}
 }
 

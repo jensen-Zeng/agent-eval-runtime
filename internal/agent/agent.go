@@ -460,11 +460,11 @@ func request(ctx context.Context, client *http.Client, endpoint, key, model stri
 		req.Header.Set("Content-Type", "application/json")
 		res, e := client.Do(req)
 		if e != nil {
-			if ctx.Err() != nil {
-				return completionResponse{}, false, domain.Fail(domain.Reason(ctx.Err()), ctx.Err())
-			}
 			if onUncertain != nil {
 				onUncertain()
+			}
+			if ctx.Err() != nil {
+				return completionResponse{}, false, domain.Fail(domain.Reason(ctx.Err()), ctx.Err())
 			}
 			var netErr net.Error
 			if errors.As(e, &netErr) && netErr.Timeout() {
@@ -487,11 +487,11 @@ func request(ctx context.Context, client *http.Client, endpoint, key, model stri
 			return completionResponse{}, true, domain.Fail("provider_error", errors.New("response exceeds 2 MiB"))
 		}
 		if readErr != nil {
-			if ctx.Err() != nil {
-				return completionResponse{}, false, domain.Fail(domain.Reason(ctx.Err()), ctx.Err())
-			}
 			if onUncertain != nil {
 				onUncertain()
+			}
+			if ctx.Err() != nil {
+				return completionResponse{}, false, domain.Fail(domain.Reason(ctx.Err()), ctx.Err())
 			}
 			return completionResponse{}, false, domain.Fail("provider_transport", errors.New("failed to read provider response"))
 		}
