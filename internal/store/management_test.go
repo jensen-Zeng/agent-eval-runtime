@@ -224,7 +224,7 @@ func TestPostgresManagementSubmitRollbackAndFinishOnce(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	claimed, err := f.store.Claim(ctx, "test-worker")
-	if err != nil || claimed.ID != experiment.Jobs[0].ID {
+	if err != nil || claimed.ID != experiment.Jobs[0].ID && claimed.ID != experiment.Jobs[1].ID {
 		t.Fatalf("claim: job=%s err=%v", claimed.ID, err)
 	}
 	result, _ := json.Marshal(map[string]any{"status": "done"})
@@ -240,7 +240,12 @@ func TestPostgresManagementSubmitRollbackAndFinishOnce(t *testing.T) {
 	if err != nil || usage.Reserved != 1 || usage.Used != 1 || usage.Running != 0 {
 		t.Fatalf("usage after finish: %+v err=%v", usage, err)
 	}
-	if _, err := f.store.CancelProjectJob(ctx, f.admin.ID, f.project.ID, experiment.Jobs[1].ID); err != nil {
+	// A batch shares its creation timestamp, so either job may be claimed first.
+	queuedID := experiment.Jobs[0].ID
+	if queuedID == claimed.ID {
+		queuedID = experiment.Jobs[1].ID
+	}
+	if _, err := f.store.CancelProjectJob(ctx, f.admin.ID, f.project.ID, queuedID); err != nil {
 		t.Fatalf("release queued sibling: %v", err)
 	}
 	usage, err = f.store.ProjectUsage(ctx, f.admin.ID, f.project.ID, "")
