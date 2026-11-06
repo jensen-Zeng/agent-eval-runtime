@@ -11,3 +11,8 @@ var JobsSQL string
 //
 //go:embed 002_lease.sql
 var LeaseSQL string
+
+// ManagementSQL embeds project and experiment persistence migrations.
+//
+//go:embed 003_management.sql
+var ManagementSQL string

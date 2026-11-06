@@ -1,4 +1,4 @@
-> 本指南描述 Go 数据集导入流程。v1.3 新增的 Harbor 文件任务使用独立的 [Harbor 接入流程](HARBOR.md)，复用同一队列和实验协议。
+> 数据集/Harbor 导入仍可用于 v1.4 项目服务；本文的 `runtime experiment`/`run-dataset.ps1` 提交示例属于 v1.0 旧 HTTP client 工作流，访问已关闭的无项目 API，不能用于当前服务。v1.4 请先将登记任务授权到项目数据集，再在网页提交实验，见[项目管理指南](PROJECTS.md)。Harbor 导入见[Harbor 指南](HARBOR.md)。
 
 # 数据集接入、重复实验与证据导出
 
@@ -86,7 +86,9 @@ Copy-Item configs/local.json configs/dependency.example.json
 
 `-SkipPrepare` 表示跳过默认基础镜像准备；脚本仍会构建 CLI、等待 PostgreSQL、检查配置并启动服务。PostgreSQL 密码由脚本从环境变量或交互输入读取，模型 API key 使用 `OPENAI_API_KEY` 等配置的环境变量名；不要把真实密钥写入清单、profile、题包或公开配置。复制出来的配置副本应只含非敏感默认值和环境变量名称；不要把真实 API key、数据库密码或本机专属值提交到公开仓库。本指南只说明复制和修改方式，不创建或覆盖 `configs/dependency.example.json`。
 
-## 创建矩阵并运行实验
+## 创建旧版矩阵并提交（legacy）
+
+> 以下 `runtime experiment` 与 `run-dataset.ps1` 示例仅保留为旧版 CLI/API 格式参考；它们会调用已关闭的 `/v1/runs`，在 v1.4 服务上不会提交任务。请使用[项目工作流](PROJECTS.md)在网页选择数据集版本和实验参数。
 
 导入成功后，用实际导入报告创建 baseline 矩阵或模型矩阵。空 `--models` 会生成 baseline-only 矩阵；带模型名时默认只创建模型 variant，`--baseline` 可同时加入 baseline：
 
@@ -98,13 +100,13 @@ Copy-Item configs/local.json configs/dependency.example.json
 .\bin\runtime.exe dataset matrix --report artifacts/datasets/import.json --name sample-models --models MODEL_A,MODEL_B --repeats 3 --baseline --output artifacts/datasets/model-matrix.json
 ```
 
-矩阵按 task × variant × repeats 展开为独立 jobs；当前单个矩阵最多 1000 jobs，repeats 范围为 1–100。矩阵只会收录实际成功导入或校验一致的任务，拒绝项留在原导入报告中。随后提交并等待完成：
+legacy 矩阵按 task × variant × repeats 展开为独立 jobs；该旧客户端最多 1000 jobs。v1.4 项目服务的单实验上限为 500 个 task × variant × repeat，重复次数为 1–100，且任务须属于所选项目数据集版本。
 
 ```powershell
 .\bin\runtime.exe experiment --file artifacts/datasets/model-matrix.json --output artifacts/experiments/sample-models.json --csv artifacts/experiments/sample-models.csv --wait --timeout 30m
 ```
 
-中断后用相同 matrix、manifest 和 CSV 路径恢复原实验，只额外添加 `--resume`：
+旧版服务中断恢复的 `--resume` 示例仅供历史输入参考；v1.4 不通过该旧命令恢复项目实验。请在项目工作台查看实验及任务状态。
 
 ```powershell
 .\bin\runtime.exe experiment --file artifacts/datasets/model-matrix.json --output artifacts/experiments/sample-models.json --csv artifacts/experiments/sample-models.csv --wait --timeout 30m --resume
@@ -112,13 +114,13 @@ Copy-Item configs/local.json configs/dependency.example.json
 
 `--resume` 要求已有 experiment manifest 且输入矩阵完全相同；它沿用原 job ID 并继续收集未完成工作，不会重新执行已完成的 job。新一轮实验应使用新的矩阵名称和输出路径。服务需要配置正确的模型与 API key 环境变量；API key 本身不进入 matrix 或任务材料。
 
-PowerShell 一键脚本可从导入报告创建矩阵、运行实验并导出 bundles：
+旧版 PowerShell 一键脚本会走 `runtime experiment`，仅供 v1.0 API 参考；当前项目服务请用网页提交实验：
 
 ```powershell
 .\scripts\run-dataset.ps1 -ImportReport artifacts/datasets/import.json -Models @('MODEL_A','MODEL_B') -Repeats 3 -IncludeBaseline
 ```
 
-该脚本会生成唯一输出目录，默认产物位于 `artifacts/dataset-runs/`。如需恢复中断实验，使用脚本打印的原 experiment 路径，直接调用 `runtime experiment --resume`；不要重新调用一键脚本来假设它会复用旧任务。
+该脚本不适用于 v1.4 项目服务。项目实验恢复和证据导出请使用网页工作台。
 
 ## 导出可审查证据
 

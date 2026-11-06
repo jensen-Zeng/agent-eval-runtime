@@ -37,7 +37,12 @@ type Backend interface {
 	Summary(context.Context) (jobs.Summary, error)
 }
 
+type Control interface {
+	Handle(http.ResponseWriter, *http.Request) bool
+}
+
 type Handler struct {
+	control Control
 	backend Backend
 	ui      http.Handler
 	gate    chan struct{}
@@ -49,7 +54,12 @@ func New(backend Backend) http.Handler { return NewWithUI(backend, nil) }
 // NewWithUI serves an optional embedded controller UI behind the same local
 // host/origin/request capacity boundary as the existing job API.
 func NewWithUI(backend Backend, ui http.Handler) http.Handler {
-	h := &Handler{backend: backend, ui: ui, gate: make(chan struct{}, maxConcurrentRequests)}
+	return NewWithControl(backend, ui, nil)
+}
+
+// NewWithControl installs authorization after the local HTTP security boundary.
+func NewWithControl(backend Backend, ui http.Handler, control Control) http.Handler {
+	h := &Handler{backend: backend, ui: ui, control: control, gate: make(chan struct{}, maxConcurrentRequests)}
 	return http.HandlerFunc(h.serve)
 }
 
@@ -85,6 +95,9 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if h.control != nil && h.control.Handle(w, r) {
 		return
 	}
 	path := strings.TrimSuffix(r.URL.Path, "/")

@@ -1,14 +1,14 @@
 package main
 
 import (
-	"github.com/jensen-Zeng/agent-eval-runtime/internal/client"
-	"github.com/jensen-Zeng/agent-eval-runtime/internal/domain"
-	"github.com/jensen-Zeng/agent-eval-runtime/internal/jobs"
 	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/jensen-Zeng/agent-eval-runtime/internal/client"
+	"github.com/jensen-Zeng/agent-eval-runtime/internal/domain"
+	"github.com/jensen-Zeng/agent-eval-runtime/internal/jobs"
 	"io"
 	"math"
 	"net/http"
@@ -156,7 +156,7 @@ func executeQueue(ctx context.Context, args []string, out, errout io.Writer) int
 }
 
 func queueUsage(w io.Writer) {
-	fmt.Fprintln(w, "Queue commands (all accept --url http://127.0.0.1:8787):")
+	fmt.Fprintln(w, "Legacy queue commands for pre-v1.4 services (v1.4 uses the web UI or /v1/manage API):")
 	fmt.Fprintln(w, "  submit --task-id ID [--agent scripted|llm] [--script NAME] [--model MODEL] [--idempotency-key KEY]")
 	fmt.Fprintln(w, "  status <job-id> | list [--limit 20] [--status STATUS] | cancel <job-id>")
 	fmt.Fprintln(w, "  events [--after-seq 0] [--limit 100] <job-id> | tasks")

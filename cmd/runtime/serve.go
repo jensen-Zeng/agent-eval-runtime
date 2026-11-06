@@ -19,6 +19,7 @@ import (
 	"github.com/jensen-Zeng/agent-eval-runtime/internal/agent"
 	"github.com/jensen-Zeng/agent-eval-runtime/internal/api"
 	"github.com/jensen-Zeng/agent-eval-runtime/internal/config"
+	"github.com/jensen-Zeng/agent-eval-runtime/internal/control"
 	"github.com/jensen-Zeng/agent-eval-runtime/internal/domain"
 	"github.com/jensen-Zeng/agent-eval-runtime/internal/jobs"
 	"github.com/jensen-Zeng/agent-eval-runtime/internal/runner"
@@ -414,7 +415,12 @@ func serveRuntime(parent context.Context, c config.Config, project string, out, 
 		return 1
 	}
 	defer dashboard.manager.Close()
-	server := &http.Server{Handler: api.NewWithUI(guiGuardBackend{Service: service, provider: provider}, dashboard), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
+	managed := control.New(control.Options{
+		Store: store, Preview: service.Preview, Snapshot: registry.datasetSnapshot, Catalog: service.Tasks,
+		Events: service.Events, NotifyCancel: service.NotifyCancel, Capacity: c.Server.QueueCapacity,
+		LockSubmission: func() func() { provider.gate.RLock(); return provider.gate.RUnlock },
+	})
+	server := &http.Server{Handler: api.NewWithControl(guiGuardBackend{Service: service, provider: provider}, dashboard, managed), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	serveErrors := make(chan error, 1)
 	startupCancel()
 	<-startupDone

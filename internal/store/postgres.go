@@ -26,7 +26,7 @@ const LeaseTTL = 30 * time.Second
 
 const jobColumns = `id, status, request, task_snapshot, idempotency_key, request_sha256,
 created_at, updated_at, started_at, finished_at, cancel_requested, owner_token,
-run_id, attempt_id, result, reason`
+run_id, attempt_id, result, reason, project_id, experiment_id, dataset_version_id, created_by`
 
 type Postgres struct {
 	db      *sql.DB
@@ -126,7 +126,7 @@ func (p *Postgres) migrate(ctx context.Context) error {
 		return fmt.Errorf("postgres migration begin: %w", jobs.ErrUnavailable)
 	}
 	defer func() { _ = tx.Rollback() }()
-	for _, migration := range []string{migrations.JobsSQL, migrations.LeaseSQL} {
+	for _, migration := range []string{migrations.JobsSQL, migrations.LeaseSQL, migrations.ManagementSQL} {
 		for _, statement := range strings.Split(migration, ";") {
 			statement = strings.TrimSpace(statement)
 			if statement == "" {
@@ -144,6 +144,9 @@ func (p *Postgres) migrate(ctx context.Context) error {
 }
 
 func migrationName(sql string) string {
+	if strings.Contains(sql, "agenteval_users") || strings.Contains(sql, "agenteval_projects") {
+		return "management"
+	}
 	if strings.Contains(sql, "agenteval_lease") {
 		return "lease"
 	}
@@ -447,36 +450,99 @@ func (p *Postgres) Claim(ctx context.Context, ownerToken string) (jobs.Job, erro
 	if ownerToken == "" || len(ownerToken) > 255 {
 		return jobs.Job{}, jobs.ErrInvalidRequest
 	}
-	tx, err := p.beginFencedTx(ctx)
-	if err != nil {
+	if err := p.ensureLeader(ctx); err != nil {
 		return jobs.Job{}, err
 	}
-	defer func() { _ = tx.Rollback() }()
-	var id string
-	err = tx.QueryRowContext(ctx, `SELECT id FROM agenteval_jobs
-		WHERE status = $1 AND NOT cancel_requested
-		ORDER BY created_at ASC, id ASC
-		LIMIT 1 FOR UPDATE SKIP LOCKED`, jobs.StatusQueued).Scan(&id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return jobs.Job{}, jobs.ErrNoJob
-	}
+	rows, err := p.db.QueryContext(ctx, `SELECT id,project_id FROM agenteval_jobs
+		WHERE status=$1 AND NOT cancel_requested ORDER BY created_at,id`, jobs.StatusQueued)
 	if err != nil {
 		return jobs.Job{}, jobs.ErrUnavailable
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE agenteval_jobs SET status = $2, owner_token = $3,
-		started_at = COALESCE(started_at, now()), updated_at = now()
-		WHERE id = $1 AND status = $4 AND NOT cancel_requested`, id, jobs.StatusRunning, ownerToken, jobs.StatusQueued)
-	if err != nil {
+	type candidate struct {
+		id        string
+		projectID sql.NullString
+	}
+	candidates := make([]candidate, 0, 32)
+	for rows.Next() {
+		var item candidate
+		if err := rows.Scan(&item.id, &item.projectID); err != nil {
+			_ = rows.Close()
+			return jobs.Job{}, jobs.ErrUnavailable
+		}
+		candidates = append(candidates, item)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
 		return jobs.Job{}, jobs.ErrUnavailable
 	}
-	job, err := scanJob(tx.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM agenteval_jobs WHERE id = $1`, id))
-	if err != nil {
-		return jobs.Job{}, jobs.ErrUnavailable
+	_ = rows.Close()
+	blocked := make(map[string]bool)
+	for _, candidate := range candidates {
+		projectID := candidate.projectID.String
+		if projectID != "" && blocked[projectID] {
+			continue
+		}
+		tx, err := p.beginFencedTx(ctx)
+		if err != nil {
+			return jobs.Job{}, err
+		}
+		if projectID != "" {
+			if err := lockProject(ctx, tx, projectID); err != nil {
+				_ = tx.Rollback()
+				if errors.Is(err, jobs.ErrForbidden) {
+					continue
+				}
+				return jobs.Job{}, err
+			}
+			var concurrentLimit int
+			var running int
+			if err := tx.QueryRowContext(ctx, `SELECT concurrent_limit FROM agenteval_projects WHERE id=$1`, projectID).Scan(&concurrentLimit); err != nil {
+				_ = tx.Rollback()
+				return jobs.Job{}, jobs.ErrUnavailable
+			}
+			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM agenteval_jobs WHERE project_id=$1 AND status=$2`, projectID, jobs.StatusRunning).Scan(&running); err != nil {
+				_ = tx.Rollback()
+				return jobs.Job{}, jobs.ErrUnavailable
+			}
+			if running >= concurrentLimit {
+				_ = tx.Rollback()
+				blocked[projectID] = true
+				continue
+			}
+		}
+		job, err := scanJob(tx.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM agenteval_jobs
+			WHERE id=$1 AND status=$2 AND NOT cancel_requested FOR UPDATE SKIP LOCKED`, candidate.id, jobs.StatusQueued))
+		if errors.Is(err, sql.ErrNoRows) {
+			_ = tx.Rollback()
+			continue
+		}
+		if err != nil {
+			_ = tx.Rollback()
+			return jobs.Job{}, jobs.ErrUnavailable
+		}
+		result, err := tx.ExecContext(ctx, `UPDATE agenteval_jobs SET status=$2,owner_token=$3,
+			started_at=COALESCE(started_at,clock_timestamp()),updated_at=clock_timestamp()
+			WHERE id=$1 AND status=$4 AND NOT cancel_requested`, candidate.id, jobs.StatusRunning, ownerToken, jobs.StatusQueued)
+		if err != nil {
+			_ = tx.Rollback()
+			return jobs.Job{}, jobs.ErrUnavailable
+		}
+		n, err := result.RowsAffected()
+		if err != nil || n != 1 {
+			_ = tx.Rollback()
+			continue
+		}
+		job, err = scanJob(tx.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM agenteval_jobs WHERE id=$1`, candidate.id))
+		if err != nil {
+			_ = tx.Rollback()
+			return jobs.Job{}, jobs.ErrUnavailable
+		}
+		if err := p.commitFencedTx(ctx, tx); err != nil {
+			return jobs.Job{}, err
+		}
+		return job, nil
 	}
-	if err := p.commitFencedTx(ctx, tx); err != nil {
-		return jobs.Job{}, err
-	}
-	return job, nil
+	return jobs.Job{}, jobs.ErrNoJob
 }
 
 func (p *Postgres) Get(ctx context.Context, id string) (jobs.Job, error) {
@@ -561,6 +627,15 @@ func (p *Postgres) Finish(ctx context.Context, id, ownerToken, status string, re
 		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	var projectID sql.NullString
+	if err := tx.QueryRowContext(ctx, `SELECT project_id FROM agenteval_jobs WHERE id=$1`, id).Scan(&projectID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return false, jobs.ErrUnavailable
+	}
+	if projectID.Valid {
+		if err := lockProject(ctx, tx, projectID.String); err != nil {
+			return false, err
+		}
+	}
 	result, err := tx.ExecContext(ctx, `UPDATE agenteval_jobs SET
 		status = CASE WHEN cancel_requested THEN $6 ELSE $3 END,
 		result = $4::jsonb,
@@ -573,6 +648,11 @@ func (p *Postgres) Finish(ctx context.Context, id, ownerToken, status string, re
 	n, err := result.RowsAffected()
 	if err != nil {
 		return false, jobs.ErrUnavailable
+	}
+	if n == 1 && projectID.Valid {
+		if err := updateReservation(ctx, tx, id, "reserved", "used"); err != nil {
+			return false, err
+		}
 	}
 	if err := p.commitFencedTx(ctx, tx); err != nil {
 		return false, err
@@ -602,6 +682,15 @@ func (p *Postgres) Cancel(ctx context.Context, id string) (jobs.Job, error) {
 		return jobs.Job{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	var projectID sql.NullString
+	if err := tx.QueryRowContext(ctx, `SELECT project_id FROM agenteval_jobs WHERE id=$1`, id).Scan(&projectID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return jobs.Job{}, jobs.ErrUnavailable
+	}
+	if projectID.Valid {
+		if err := lockProject(ctx, tx, projectID.String); err != nil {
+			return jobs.Job{}, err
+		}
+	}
 	_, err = tx.ExecContext(ctx, `UPDATE agenteval_jobs SET
 		cancel_requested = true,
 		status = CASE WHEN status = $2 THEN $3 ELSE status END,
@@ -620,6 +709,11 @@ func (p *Postgres) Cancel(ctx context.Context, id string) (jobs.Job, error) {
 	if err != nil {
 		return jobs.Job{}, jobs.ErrUnavailable
 	}
+	if projectID.Valid && job.Status == jobs.StatusCanceled {
+		if err := updateReservation(ctx, tx, id, "reserved", "released"); err != nil {
+			return jobs.Job{}, err
+		}
+	}
 	if err := p.commitFencedTx(ctx, tx); err != nil {
 		return jobs.Job{}, err
 	}
@@ -632,6 +726,54 @@ func (p *Postgres) Recover(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	projectRows, err := tx.QueryContext(ctx, `SELECT DISTINCT r.project_id FROM agenteval_job_reservations r
+		JOIN agenteval_jobs j ON j.id=r.job_id WHERE r.state='reserved' AND j.status=$1 ORDER BY r.project_id`, jobs.StatusRunning)
+	if err != nil {
+		return 0, jobs.ErrUnavailable
+	}
+	projectIDs := make([]string, 0)
+	for projectRows.Next() {
+		var projectID string
+		if err := projectRows.Scan(&projectID); err != nil {
+			_ = projectRows.Close()
+			return 0, jobs.ErrUnavailable
+		}
+		projectIDs = append(projectIDs, projectID)
+	}
+	if err := projectRows.Err(); err != nil {
+		_ = projectRows.Close()
+		return 0, jobs.ErrUnavailable
+	}
+	_ = projectRows.Close()
+	for _, projectID := range projectIDs {
+		if err := lockProject(ctx, tx, projectID); err != nil {
+			return 0, err
+		}
+	}
+	reservationRows, err := tx.QueryContext(ctx, `SELECT r.job_id FROM agenteval_job_reservations r
+		JOIN agenteval_jobs j ON j.id=r.job_id WHERE r.state='reserved' AND j.status=$1 ORDER BY r.job_id`, jobs.StatusRunning)
+	if err != nil {
+		return 0, jobs.ErrUnavailable
+	}
+	jobIDs := make([]string, 0)
+	for reservationRows.Next() {
+		var jobID string
+		if err := reservationRows.Scan(&jobID); err != nil {
+			_ = reservationRows.Close()
+			return 0, jobs.ErrUnavailable
+		}
+		jobIDs = append(jobIDs, jobID)
+	}
+	if err := reservationRows.Err(); err != nil {
+		_ = reservationRows.Close()
+		return 0, jobs.ErrUnavailable
+	}
+	_ = reservationRows.Close()
+	for _, jobID := range jobIDs {
+		if err := updateReservation(ctx, tx, jobID, "reserved", "used"); err != nil {
+			return 0, err
+		}
+	}
 	result, err := tx.ExecContext(ctx, `UPDATE agenteval_jobs SET
 		status = CASE WHEN cancel_requested THEN $1 ELSE $2 END,
 		reason = CASE WHEN cancel_requested THEN 'canceled' ELSE 'interrupted' END,
@@ -682,10 +824,11 @@ func scanJob(row scanner) (jobs.Job, error) {
 	var job jobs.Job
 	var requestJSON, snapshotJSON, resultJSON []byte
 	var key, ownerToken, runID, attemptID, reason sql.NullString
+	var projectID, experimentID, datasetVersionID, createdBy sql.NullString
 	var started, finished sql.NullTime
 	err := row.Scan(&job.ID, &job.Status, &requestJSON, &snapshotJSON, &key, &job.RequestSHA256,
 		&job.CreatedAt, &job.UpdatedAt, &started, &finished, &job.CancelRequested, &ownerToken,
-		&runID, &attemptID, &resultJSON, &reason)
+		&runID, &attemptID, &resultJSON, &reason, &projectID, &experimentID, &datasetVersionID, &createdBy)
 	if err != nil {
 		return jobs.Job{}, err
 	}
@@ -700,6 +843,10 @@ func scanJob(row scanner) (jobs.Job, error) {
 	job.RunID = runID.String
 	job.AttemptID = attemptID.String
 	job.Reason = reason.String
+	job.ProjectID = projectID.String
+	job.ExperimentID = experimentID.String
+	job.DatasetVersionID = datasetVersionID.String
+	job.CreatedBy = createdBy.String
 	if started.Valid {
 		t := started.Time.UTC()
 		job.StartedAt = &t

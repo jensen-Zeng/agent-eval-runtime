@@ -27,7 +27,7 @@ func main() {
 }
 func execute(ctx context.Context, args []string, out, errout io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(out, "AgentEval Runtime v"+runner.Version+"\nCommands: version, doctor, prepare, hash, run, get, serve, submit, status, list, cancel, events, tasks, batch, experiment, reeval, import, dataset, harbor, export\nUse <command> --help for flags.")
+		fmt.Fprintln(out, "AgentEval Runtime v"+runner.Version+"\nCommands: version, doctor, prepare, hash, run, get, serve, submit, status, list, cancel, events, tasks, batch, experiment, reeval, import, dataset, harbor, export\nUse <command> --help for flags.\nFor v1.4 project experiments use the web UI or /v1/manage API. Legacy queue/experiment clients target pre-v1.4 services.")
 		return 0
 	}
 	if args[0] == "version" {

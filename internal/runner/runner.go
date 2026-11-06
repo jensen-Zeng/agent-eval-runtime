@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const Version = "1.3.0"
+const Version = "1.4.0"
 
 type ResourceSummary struct {
 	CPUSeconds             *float64 `json:"cpu_seconds"`

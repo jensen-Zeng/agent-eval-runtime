@@ -1,6 +1,6 @@
 # Harbor 题包接入（v1.3）
 
-本指南介绍 AgentEval Runtime 对 Harbor `T3-RL-v1.0` 题包的本机接入子集。该适配保留已有 Go 任务后端；两种任务可进入同一任务清单、网页实验和队列流程。它不是对所有 Harbor 版本或任意容器任务的通用运行器。
+本指南介绍 AgentEval Runtime 对 Harbor `T3-RL-v1.0` 题包的本机导入子集。导入并重启服务后，先将任务分配到项目数据集版本，再在 v1.4 网页项目工作流中提交实验，见[项目管理指南](PROJECTS.md)。该适配保留 Go 任务后端；两种任务可在同一项目实验中使用。它不是对所有 Harbor 版本或任意容器任务的通用运行器。
 
 ## 支持范围
 
@@ -68,7 +68,7 @@ Agent 的最终 `/app` 工作区会导出为 `submission.tar.gz`。verifier 必�
 
 `valid = 1` 表示评分结果有效，即使 reward 为 0 也作为有效的模型结果记录；`valid = 0` 表示 grader/环境结果不可信，归类为基础设施错误，而不是模型得 0 分。reward 归一化范围是 0–1；目前通用 Harbor 通过阈值固定为 1.0，所以 partial reward 会保留在 score 中，但 verdict 仍是 `test_failure`。运行报告和导出 bundle 包含 `submission.tar.gz`、评分 JSON、轨迹与 manifest 中的输入/镜像哈希，具体文件以报告 `artifacts` 字段为准。
 
-命令行实验和导出操作见 [CLI 参考](CLI_REFERENCE.md)；队列服务、网页方案及运行记录见 [网页控制台指南](WEB_UI.md)。
+项目实验提交、取消和查看见[项目管理指南](PROJECTS.md)与[网页控制台指南](WEB_UI.md)。本指南的 CLI 示例只介绍 Harbor 检查、导入和本机导出操作；旧 `runtime experiment` 命令不适用于 v1.4 服务，见[CLI 参考](CLI_REFERENCE.md)。
 
 ## 图片、视频与音频输入
 

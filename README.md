@@ -2,7 +2,7 @@
 
 [![Go CI](https://github.com/jensen-Zeng/agent-eval-runtime/actions/workflows/go.yml/badge.svg)](https://github.com/jensen-Zeng/agent-eval-runtime/actions/workflows/go.yml) · [MIT License](LICENSE) · [English overview](docs/README.en.md)
 
-AgentEval Runtime 1.3.0 是一个用 Go 编写的本机 Agent 执行与评测平台。它将 Agent 任务放入受限的 Linux 容器，在独立评测环境中运行可信评分，并记录任务结果、执行轨迹、资源和可复核证据。
+AgentEval Runtime 1.4.0 是一个用 Go 编写的本机 Agent 执行与评测平台，支持登录、项目成员与按项目隔离的任务和用量管理。它将 Agent 任务放入受限的 Linux 容器，在独立评测环境中运行可信评分，并记录任务结果、执行轨迹、资源和可复核证据。
 
 当前提供命令行、HTTP 队列服务和嵌入式中文网页。确定性 Scripted Agent 可在没有模型 Key 时运行；真实模型实验需自行配置 OpenAI-compatible 服务，并可能产生费用。
 
@@ -13,9 +13,9 @@ AgentEval Runtime 1.3.0 是一个用 Go 编写的本机 Agent 执行与评测平
 - Docker sandbox、独立可信评测、超时和资源限制、轨迹与 JSON 报告。
 - PostgreSQL 持久队列、有界 worker pool、取消、重启恢复与资源对账。
 - 冻结任务输入的实验矩阵、多模型重复运行、恢复未完成实验、JSON/CSV 汇总和证据导出。
-- 本机网页用于配置模型连接、组织实验和查看结果；Go 程序内嵌前端资源，不需要 Node.js 或 npm。
+- 登录后的网页工作台按项目管理成员、数据集版本、实验、队列任务和用量；Go 程序内嵌前端资源，不需要 Node.js 或 npm。
 
-运行任务使用 Linux amd64 Docker 容器。任务后端目前包括 Go 代码任务和 Harbor `T3-RL-v1.0` 子集；不代表支持任意语言或全部 Harbor 格式。Harbor 原始题包通过 CLI 导入，本版网页只选择已登记任务。控制端源码与构建支持 Windows 和 Linux；Linux 宿主端到端验证仍在推进。项目面向可信的本机操作者，不提供公网多租户服务或独立虚拟机隔离。
+运行任务使用 Linux amd64 Docker 容器。任务后端目前包括 Go 代码任务和 Harbor `T3-RL-v1.0` 子集；不代表支持任意语言或全部 Harbor 格式。Harbor 原始题包通过 CLI 导入，本版网页只选择已登记任务。控制端源码与构建支持 Windows 和 Linux；Linux 宿主端到端验证仍在推进。服务支持可信操作者在本机协作，并以项目成员权限隔离数据；它不是公网托管多租户服务，也不提供独立虚拟机隔离。
 
 ## 架构
 
@@ -63,7 +63,7 @@ bash ./scripts/demo.sh
 
 首次运行会下载或构建所需依赖镜像；请先确认 Docker Linux Engine 正在运行。
 
-## Windows 队列服务和网页
+## Windows 本机服务和网页
 
 全新克隆后，先初始化数据库与 sandbox 镜像。此命令会构建 Runtime、启动 PostgreSQL、准备镜像并以前台方式启动服务：
 
@@ -73,7 +73,7 @@ cd agent-eval-runtime
 .\scripts\start.ps1 -ConfigFile configs/local.json
 ```
 
-首次启动时按提示设置 PostgreSQL 密码。以后复用同一 Docker 卷时必须输入相同密码。保持该 PowerShell 窗口运行，然后打开 <http://127.0.0.1:8787/>。Scripted 实验和已登记的 baseline 脚本都无需 API Key。
+首次启动时按提示设置 PostgreSQL 密码。以后复用同一 Docker 卷时必须输入相同密码。保持该 PowerShell 窗口运行，然后打开 <http://127.0.0.1:8787/>。首次进入时创建唯一的初始管理员账号；登录后创建项目与成员，再在项目中登记数据集版本和实验。详细权限与配额流程见[项目管理指南](docs/PROJECTS.md)。Scripted 实验和已登记的 baseline 脚本都无需 API Key。
 
 初始化过 sandbox 镜像后，可以双击仓库根目录的 `打开控制台.cmd`，或运行 `scripts/start-ui.ps1`。这两个网页启动入口会跳过镜像准备，因此要求镜像已先准备好；新克隆第一次启动请用上面的 `start.ps1`。
 
@@ -83,7 +83,7 @@ Linux 上可用以下命令启动本机队列服务；它会启动 PostgreSQL、
 bash ./scripts/start.sh
 ```
 
-服务默认绑定 loopback。按 `Ctrl+C` 停止 Runtime；PostgreSQL 容器及其数据卷会保留，后续启动继续使用原密码。
+服务默认绑定 loopback。首次启动需要在网页完成管理员账号设置。按 `Ctrl+C` 停止 Runtime；PostgreSQL 容器及其数据卷会保留，后续启动继续使用原密码。
 
 ## 配置模型
 
@@ -91,34 +91,13 @@ bash ./scripts/start.sh
 
 也可以在启动服务的终端设置 `OPENAI_API_KEY` 和 `OPENAI_MODEL`，再启动 Runtime。不要把 Key 写入配置文件、题包、命令行参数或提交记录。只有需要真实模型评测时才配置 Key；模型调用可能产生费用。
 
-## 实验流程
+## 项目实验流程
 
-1. 在实验台选择已经登记的 Go 或 Harbor 任务，设置模型和重复次数。Harbor 与 Go 任务可混合组成实验；基线无需模型 Key。自带 `go-*` fixture 的 Scripted 示例见下面的 CLI 矩阵。
-2. 启动实验。每个任务、Agent 配置和重复次数会建立独立 job；结果包括评分、耗时、资源数据和执行事件。
-3. 在运行记录查看结果、恢复未完成的实验，或导出 JSON/CSV 和证据包。
+v1.4 的服务实验必须先选择项目和数据集版本，再在网页中提交。Owner 管理成员、已授权任务的数据集版本和项目限额；Executor 可提交、查看和取消实验；Reader 只读。所有项目 API 都要求当前用户属于目标项目，管理员也必须先加入项目。每个数据集最多 200 个任务，每个实验最多展开 500 个 task × variant × repeat。详细认证、版本化、幂等和配额规则见[项目管理指南](docs/PROJECTS.md)。
 
-命令行实验使用一个 JSON 矩阵文件。以下例子只使用仓库自带任务：
+提交实验会在数据库事务中建立完整任务组并预占当日额度。预留额度在任务到达终态前保持 `reserved`：排队任务取消会释放；已运行任务完成、取消或被恢复流程终结后转为 `used`。队列、运行记录、事件和用量均按项目授权。
 
-```json
-{
-  "schema_version": 1,
-  "name": "parser-scripted-success",
-  "tasks": ["go-parser-001"],
-  "variants": [
-    {"agent": "scripted", "script": "success"}
-  ],
-  "repeats": 2
-}
-```
-
-保存为 `examples/parser-scripted.json` 后，在队列服务运行时执行：
-
-```powershell
-.\bin\runtime.exe experiment --file examples/parser-scripted.json --output artifacts/experiments/parser-scripted.json --wait
-```
-
-中断后使用相同矩阵和输出文件，并加 `--resume` 收集原实验结果。要重新执行并产生新的 jobs，应创建新的实验输出文件。数据集导入和依赖镜像准备流程见数据集指南；通用清单示例仅供按自己的数据目录修改，不能直接当成可运行题包。
-
+可信操作者仍可用 `runtime run` 直接运行单个任务，也可运行仓库的 `scripts/demo.ps1` 或 `scripts/demo.sh` 演示脚本；这些本机流程不走项目服务配额。旧 `runtime experiment`、`submit` 和 `batch` 客户端使用未分项目的 `/v1/runs` API，不适用于 v1.4 服务。旧 API 的 GET 和写请求都已关闭。
 Harbor 题包的兼容范围、静态检查、本地镜像导入、资源覆盖、评分结果与证据说明见 [Harbor 接入指南](docs/HARBOR.md)。导入后需重启 Runtime；网页不直接导入原始题包。Harbor 的图像工具支持 PNG/JPEG 和 GIF 第 0–31 帧；视频/音频没有原生多模态消息接口，可在容器内用 `exec` 调用可用工具处理。
 
 ## 目录
@@ -149,6 +128,8 @@ artifacts/                 本地运行、实验与导出结果
 
 - [命令行与配置参考](docs/CLI_REFERENCE.md)
 - [网页控制台指南](docs/WEB_UI.md)
+- [登录、项目、角色与配额指南](docs/PROJECTS.md)
+- [v1.4 项目服务验收记录](docs/PROJECTS_ACCEPTANCE.md)
 - [数据集适配与实验指南](docs/DATASETS.md)
 - [Harbor T3-RL-v1.0 接入指南](docs/HARBOR.md)
 - [v1.0 安全与性能边界](docs/V1.0_RELEASE.md)

@@ -56,22 +56,26 @@ type TaskSnapshot struct {
 }
 
 type Job struct {
-	ID              string          `json:"id"`
-	Status          string          `json:"status"`
-	Request         Request         `json:"request"`
-	TaskSnapshot    TaskSnapshot    `json:"task_snapshot"`
-	IdempotencyKey  string          `json:"idempotency_key,omitempty"`
-	RequestSHA256   string          `json:"request_sha256"`
-	CreatedAt       time.Time       `json:"created_at"`
-	UpdatedAt       time.Time       `json:"updated_at"`
-	StartedAt       *time.Time      `json:"started_at,omitempty"`
-	FinishedAt      *time.Time      `json:"finished_at,omitempty"`
-	CancelRequested bool            `json:"cancel_requested"`
-	OwnerToken      string          `json:"-"`
-	RunID           string          `json:"run_id,omitempty"`
-	AttemptID       string          `json:"attempt_id,omitempty"`
-	Result          json.RawMessage `json:"result,omitempty"`
-	Reason          string          `json:"reason,omitempty"`
+	ID               string          `json:"id"`
+	ProjectID        string          `json:"project_id,omitempty"`
+	ExperimentID     string          `json:"experiment_id,omitempty"`
+	DatasetVersionID string          `json:"dataset_version_id,omitempty"`
+	CreatedBy        string          `json:"created_by,omitempty"`
+	Status           string          `json:"status"`
+	Request          Request         `json:"request"`
+	TaskSnapshot     TaskSnapshot    `json:"task_snapshot"`
+	IdempotencyKey   string          `json:"idempotency_key,omitempty"`
+	RequestSHA256    string          `json:"request_sha256"`
+	CreatedAt        time.Time       `json:"created_at"`
+	UpdatedAt        time.Time       `json:"updated_at"`
+	StartedAt        *time.Time      `json:"started_at,omitempty"`
+	FinishedAt       *time.Time      `json:"finished_at,omitempty"`
+	CancelRequested  bool            `json:"cancel_requested"`
+	OwnerToken       string          `json:"-"`
+	RunID            string          `json:"run_id,omitempty"`
+	AttemptID        string          `json:"attempt_id,omitempty"`
+	Result           json.RawMessage `json:"result,omitempty"`
+	Reason           string          `json:"reason,omitempty"`
 }
 
 type Summary struct {

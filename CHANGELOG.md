@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0
+
+- Added first-run administrator setup, authenticated sessions, user management, and project membership with owner/executor/reader roles.
+- Added immutable project dataset versions and project-scoped experiment submission, jobs, events, cancellation, and usage.
+- Added transactionally reserved daily task quotas, running concurrency limits, and idempotent experiment submission.
+- Closed legacy unscoped `/v1/runs` GET and write paths to prevent bypassing project authorization and accounting; direct trusted local `runtime run` remains available outside service quotas.
+- Kept the service intended for trusted local deployments; account and project controls do not make it a public multi-tenant product.
+
 ## 1.3.0
 
 - Added a constrained Harbor T3-RL-v1.0 task backend with separate local agent/verifier image builds, frozen package/image IDs, programmatic continuous reward parsing, and submission archive export.

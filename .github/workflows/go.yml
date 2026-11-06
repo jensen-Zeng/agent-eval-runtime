@@ -23,6 +23,8 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
+      - name: Test embedded web UI
+        run: node --test scripts/test-webui.cjs
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -30,6 +32,35 @@ jobs:
       - run: go test ./... -count=1 -timeout 10m
       - run: go vet ./...
       - run: go build ./cmd/runtime
+
+  postgres-integration:
+    name: PostgreSQL integration (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: agenteval
+          POSTGRES_PASSWORD: integration-test-only
+          POSTGRES_DB: agenteval
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agenteval -d agenteval"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      AGENTEVAL_TEST_DATABASE_URL: postgres://agenteval:integration-test-only@127.0.0.1:5432/agenteval?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: PostgreSQL authorization and quota integration
+        run: go test -p 1 ./... -run 'Postgres|Management' -count=1 -timeout 10m
 
   docker-integration:
     name: Docker integration (Linux)

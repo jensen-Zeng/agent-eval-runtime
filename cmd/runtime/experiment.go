@@ -142,7 +142,7 @@ type experimentPreviewer interface {
 }
 
 func executeExperiment(parent context.Context, args []string, out, errout io.Writer) int {
-	fs := flag.NewFlagSet("runtime experiment", flag.ContinueOnError)
+	fs := flag.NewFlagSet("runtime experiment (legacy pre-v1.4 service client; use the project web UI for v1.4)", flag.ContinueOnError)
 	fs.SetOutput(errout)
 	urlFlag := fs.String("url", defaultQueueURL, "loopback runtime API URL")
 	inputPath := fs.String("file", "examples/v1.0-experiment.json", "frozen experiment matrix JSON")

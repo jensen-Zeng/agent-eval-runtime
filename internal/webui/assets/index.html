@@ -4,106 +4,214 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>AgentEval · 本机实验控制台</title>
+  <title>AgentEval · 项目评测平台</title>
   <link rel="stylesheet" href="/assets/app.css">
-  <script src="/assets/app.js" defer></script>
+  <script src="/assets/manage.js" defer></script>
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <a class="brand" href="#workspace" aria-label="AgentEval 首页">
+  <main id="auth-view" class="auth-screen" aria-labelledby="auth-title">
+    <section class="auth-card">
+      <a class="brand auth-brand" href="#" aria-label="AgentEval">
         <span class="brand-mark">A<span>.</span></span>
-        <span class="brand-copy"><strong>AgentEval</strong><small>实验控制台</small></span>
+        <span class="brand-copy"><strong>AgentEval</strong><small>Agent Evaluation Runtime</small></span>
       </a>
-      <div class="side-caption">工作区</div>
-      <nav class="side-nav" aria-label="主导航">
-        <button class="nav-item active" data-tab="workspace"><span class="nav-icon">⌘</span><span>实验台</span></button>
-        <button class="nav-item" data-tab="runs"><span class="nav-icon">◷</span><span>运行记录</span><span class="nav-count" id="run-count">0</span></button>
-        <button class="nav-item" data-tab="settings"><span class="nav-icon">⚙</span><span>连接设置</span></button>
+      <div class="auth-eyebrow">PROJECT WORKSPACE</div>
+      <h1 id="auth-title">登录项目空间</h1>
+      <p id="auth-description" class="auth-description">登录后继续管理项目、数据集版本和 Agent 评测。</p>
+      <form id="auth-form" autocomplete="on">
+        <label class="field-label" for="auth-username">账号</label>
+        <input class="text-input" id="auth-username" name="username" minlength="1" maxlength="64" autocomplete="username" required>
+        <label class="field-label auth-password-label" for="auth-password">密码</label>
+        <input class="text-input" id="auth-password" name="password" type="password" minlength="12" maxlength="256" autocomplete="current-password" required>
+        <p id="auth-error" class="form-feedback error auth-error" role="status" aria-live="polite"></p>
+        <button class="button button-primary auth-submit" id="auth-submit" type="submit">登录</button>
+      </form>
+      <p class="auth-footnote">会话由 Runtime 使用 HttpOnly Cookie 管理。</p>
+    </section>
+  </main>
+
+  <div class="app-shell hidden" id="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#projects" aria-label="AgentEval 项目主页">
+        <span class="brand-mark">A<span>.</span></span>
+        <span class="brand-copy"><strong>AgentEval</strong><small>项目评测空间</small></span>
+      </a>
+      <div class="project-switcher">
+        <label for="project-select">当前项目</label>
+        <select id="project-select" aria-label="切换项目"><option value="">选择项目</option></select>
+        <button class="text-button project-create-link" id="open-create-project" type="button">＋ 创建项目</button>
+      </div>
+      <div class="side-caption">项目工作区</div>
+      <nav class="side-nav" aria-label="项目导航">
+        <button class="nav-item active" data-tab="projects"><span class="nav-icon">⌂</span><span>项目概览</span></button>
+        <button class="nav-item" data-tab="datasets"><span class="nav-icon">▤</span><span>数据集版本</span></button>
+        <button class="nav-item" data-tab="experiments"><span class="nav-icon">⌘</span><span>实验</span></button>
+        <button class="nav-item" data-tab="members" id="nav-members"><span class="nav-icon">♙</span><span>项目成员</span></button>
+        <button class="nav-item hidden" data-tab="users" id="nav-users"><span class="nav-icon">♧</span><span>账号管理</span></button>
+        <button class="nav-item hidden" data-tab="admin-settings" id="nav-admin-settings"><span class="nav-icon">⚙</span><span>管理员设置</span></button>
+        <button class="nav-item hidden" data-tab="legacy" id="nav-legacy"><span class="nav-icon">◷</span><span>旧版记录</span></button>
       </nav>
       <div class="sidebar-bottom">
         <div class="connection-card">
-          <div class="connection-top"><span class="status-dot" id="service-dot"></span><span id="service-label">正在连接</span></div>
-          <div class="connection-sub" id="service-sub">本机 Agent Runtime</div>
+          <div class="connection-top"><span class="status-dot ok"></span><span id="session-user-label">已登录</span></div>
+          <div class="connection-sub" id="session-role-label">项目成员</div>
         </div>
-        <div class="side-foot"><span class="side-mini-mark">AE</span><span>本地运行 · 数据保存在此设备</span></div>
+        <div class="sidebar-actions">
+          <button class="text-button" id="logout-button" type="button">退出登录</button>
+          <div class="side-foot"><span class="side-mini-mark">AE</span><span>权限按项目成员角色控制</span></div>
+        </div>
       </div>
     </aside>
 
     <main class="main-area">
       <header class="topbar">
-        <div class="breadcrumb"><span>AgentEval</span><span class="crumb-sep">/</span><strong id="page-crumb">实验台</strong></div>
-        <div class="topbar-right"><span class="server-pill"><i class="status-dot" id="top-dot"></i><span id="top-status">检测服务</span></span><button class="icon-button" id="refresh-button" title="刷新数据" aria-label="刷新数据">↻</button></div>
+        <div class="breadcrumb"><span>AgentEval</span><span class="crumb-sep">/</span><strong id="page-crumb">项目概览</strong></div>
+        <div class="topbar-right"><span class="role-badge" id="active-role-badge">—</span><button class="icon-button" id="refresh-button" title="刷新当前项目" aria-label="刷新当前项目">↻</button></div>
       </header>
 
-      <section class="page active" id="page-workspace">
+      <section class="page active" id="page-projects">
         <div class="page-heading">
-          <div><div class="eyebrow">AGENT EVALUATION</div><h1>实验台</h1><p class="page-lead">选择任务与模型，设定重复次数，然后启动可追踪、可复现的评测。</p></div>
-          <div class="heading-badge"><span class="badge-icon">✳</span><span><strong id="task-total">—</strong><small>个可用任务</small></span></div>
+          <div><div class="eyebrow">PROJECT OVERVIEW</div><h1 id="project-title">项目管理</h1><p class="page-lead" id="project-subtitle">选择项目后查看成员、数据集版本、实验和配额。</p></div>
+          <div class="heading-badge"><span class="badge-icon">▤</span><span><strong id="project-dataset-count">—</strong><small>个数据集版本</small></span></div>
         </div>
-        <div class="workspace-grid">
-          <section class="panel task-panel">
-            <div class="panel-heading task-heading">
-              <div><h2>选择评测任务</h2><p>支持 Go 与 Harbor 任务；每项任务使用已登记的固定环境与预算。</p></div>
-              <div class="task-actions"><button class="text-button" id="select-all">全选</button><span class="muted-separator">·</span><button class="text-button" id="clear-tasks">清空</button></div>
-            </div>
-            <div class="task-toolbar"><label class="search-box"><span>⌕</span><input id="task-search" type="search" placeholder="搜索任务名称或来源…" autocomplete="off"><kbd>⌘ K</kbd></label><span class="selection-count" id="selection-count">已选 0 项</span></div>
-            <div class="task-list" id="task-list"><div class="loading-state"><span class="spinner"></span>正在加载任务…</div></div>
-            <div class="task-footer"><span class="muted-text" id="task-footer-note">Harbor 题包导入并重启服务后可在此选择</span><button class="text-button" id="reload-tasks">重新加载</button></div>
-          </section>
-
-          <aside class="setup-column">
-            <section class="panel setup-panel">
-              <div class="panel-heading"><div><h2>实验方案</h2><p>保存方案后可随时载入复用。</p></div><span class="step-tag">01 / 配置</span></div>
-              <label class="field-label" for="experiment-title">方案名称</label>
-              <input class="text-input" id="experiment-title" maxlength="120" placeholder="例如：修复能力对比 · 10 月">
-              <div class="field-row-head"><label class="field-label">评测模型</label><button class="text-button small" id="add-model">＋ 添加模型</button></div>
-              <div class="model-list" id="model-list"></div>
-              <label class="field-label repeats-label" for="repeat-count">每项重复运行</label>
-              <div class="number-control"><button type="button" data-number="down" aria-label="减少重复次数">−</button><input id="repeat-count" type="number" min="1" max="100" value="2"><span>次</span><button type="button" data-number="up" aria-label="增加重复次数">＋</button></div>
-              <label class="toggle-row" for="baseline-toggle"><span class="toggle-copy"><strong>加入基线运行</strong><small>不调用模型，不产生模型费用</small></span><input id="baseline-toggle" type="checkbox" checked><span class="toggle-ui"></span></label>
-              <div class="cost-note"><span class="info-mark">i</span><span>模型运行会按所选服务实际计费。基线运行不调用模型。</span></div>
-              <div class="plan-actions"><button class="button button-quiet" id="save-preset">保存方案</button><button class="button button-quiet" id="load-preset">载入</button><button class="button button-icon-danger" id="delete-preset" title="删除所选方案" aria-label="删除所选方案">⌫</button></div>
-              <select id="preset-select" class="preset-select" aria-label="已保存方案"><option value="">选择已保存方案…</option></select>
-              <button class="button button-primary start-button" id="start-experiment"><span data-button-label>启动实验</span><span class="button-arrow">→</span></button>
-              <div class="vault-inline" id="vault-inline"><span class="vault-indicator" id="vault-dot"></span><span id="vault-summary">正在检查模型密钥状态…</span><button class="text-button small" data-open-settings>设置</button></div>
+        <div id="empty-project-state" class="panel empty-project hidden">
+          <div class="empty-icon">⌂</div><h2>还没有可访问的项目</h2><p>创建一个项目，或联系项目所有者添加你的账号。</p>
+        </div>
+        <div id="project-overview" class="project-overview">
+          <div class="overview-grid">
+            <section class="panel overview-panel">
+              <div class="panel-heading"><div><h2>配额使用情况</h2><p>按 UTC 日统计。配额数字以平台计量单位显示。</p></div><button class="text-button" id="refresh-usage" type="button">刷新</button></div>
+              <div class="usage-grid" id="usage-grid"><div class="loading-state">选择一个项目以加载用量。</div></div>
             </section>
-            <section class="tip-card"><span class="tip-mark">↗</span><div><strong>运行将在隔离环境中进行</strong><p>每次运行都会保留评分、资源消耗和执行轨迹，方便后续复查。</p></div></section>
-          </aside>
+            <section class="panel overview-panel" id="project-quota-panel">
+              <div class="panel-heading"><div><h2>项目配额</h2><p>所有者可以调整每日额度和并发任务数。</p></div><span class="role-badge">OWNER</span></div>
+              <form id="project-quota-form" class="compact-form">
+                <label class="field-label" for="project-daily-limit">每日额度</label><input class="text-input" id="project-daily-limit" type="number" min="1" step="1" required>
+                <label class="field-label settings-field" for="project-concurrent-limit">并发任务数</label><input class="text-input" id="project-concurrent-limit" type="number" min="1" step="1" required>
+                <div class="form-actions"><button class="button button-primary" type="submit">保存配额</button><span class="form-feedback" id="project-quota-feedback" aria-live="polite"></span></div>
+              </form>
+            </section>
+          </div>
+          <div class="overview-grid overview-grid-bottom">
+            <section class="panel overview-panel">
+              <div class="panel-heading"><div><h2>最近实验</h2><p>当前项目内的评测进度与结果。</p></div><button class="text-button" data-open-tab="experiments" type="button">查看全部</button></div>
+              <div id="recent-experiments" class="compact-list"><div class="loading-state">正在加载项目数据…</div></div>
+            </section>
+            <section class="panel overview-panel">
+              <div class="panel-heading"><div><h2>数据集版本</h2><p>数据集版本创建后固定其任务快照。</p></div><button class="text-button" data-open-tab="datasets" type="button">管理版本</button></div>
+              <div id="recent-datasets" class="compact-list"><div class="loading-state">正在加载项目数据…</div></div>
+            </section>
+          </div>
         </div>
       </section>
 
-      <section class="page" id="page-runs">
-        <div class="page-heading"><div><div class="eyebrow">HISTORY & EVIDENCE</div><h1>运行记录</h1><p class="page-lead">查看实验进度、评分和执行轨迹，下载结果或导出证据包。</p></div><button class="button button-quiet" id="refresh-runs">↻ 刷新记录</button></div>
-        <div class="runs-layout"><section class="panel runs-panel"><div class="panel-heading"><div><h2>实验历史</h2><p>点击实验查看任务明细与可用操作。</p></div><span class="soft-tag" id="history-count">0 项</span></div><div class="experiment-list" id="experiment-list"><div class="loading-state"><span class="spinner"></span>正在加载记录…</div></div></section>
-          <section class="panel detail-panel" id="experiment-detail"><div class="empty-detail"><div class="empty-icon">▤</div><h3>选择一条实验记录</h3><p>实验状态、任务得分、运行轨迹和证据导出都会显示在这里。</p></div></section>
+      <section class="page" id="page-datasets">
+        <div class="page-heading"><div><div class="eyebrow">DATASET VERSIONS</div><h1>数据集版本</h1><p class="page-lead">版本固定所选任务及其评测快照；已有版本不能修改。</p></div><span class="heading-badge"><span class="badge-icon">◇</span><span><strong id="dataset-version-count">—</strong><small>个不可变版本</small></span></span></div>
+        <div class="management-grid">
+          <section class="panel management-panel">
+            <div class="panel-heading"><div><h2>项目数据集</h2><p>选择一个版本后可按其中固定的任务创建实验。</p></div><button class="text-button" id="reload-datasets" type="button">刷新</button></div>
+            <div id="dataset-list" class="record-list"><div class="loading-state">选择项目后加载数据集版本。</div></div>
+          </section>
+          <section class="panel management-panel" id="create-dataset-panel">
+            <div class="panel-heading"><div><h2>创建数据集版本</h2><p>请使用 Runtime 已登记任务的 ID。提交后该版本不可变。</p></div><span class="role-badge">OWNER</span></div>
+            <form id="dataset-form" class="compact-form">
+              <label class="field-label" for="dataset-name">数据集名称</label><input class="text-input" id="dataset-name" maxlength="120" required placeholder="例如：内部代码修复集">
+              <label class="field-label settings-field" for="dataset-version">版本标识</label><input class="text-input" id="dataset-version" maxlength="80" required placeholder="例如：2026-11-v1">
+              <label class="field-label settings-field" for="dataset-task-ids">任务 ID</label><textarea class="text-input textarea-input" id="dataset-task-ids" maxlength="12000" required placeholder="每行一个已登记 task_id"></textarea>
+              <div class="catalog-box hidden" id="catalog-box"><div class="catalog-title">管理员可浏览已登记任务</div><div id="catalog-list" class="catalog-list"></div></div>
+              <div class="form-actions"><button class="button button-primary" type="submit">创建不可变版本</button><span class="form-feedback" id="dataset-feedback" aria-live="polite"></span></div>
+            </form>
+          </section>
         </div>
       </section>
 
-      <section class="page" id="page-settings">
-        <div class="page-heading"><div><div class="eyebrow">PROVIDER & SECURITY</div><h1>连接设置</h1><p class="page-lead">配置 OpenAI-compatible 服务，并管理本机加密保存的 API Key。</p></div><span class="secure-badge"><span>⌑</span>密钥加密保存在本机</span></div>
+      <section class="page" id="page-experiments">
+        <div class="page-heading"><div><div class="eyebrow">EVALUATION EXPERIMENTS</div><h1>实验</h1><p class="page-lead">在已固定的数据集版本上配置基线、模型和重复次数。</p></div><div class="heading-badge"><span class="badge-icon">⌘</span><span><strong id="experiment-count">—</strong><small>项实验</small></span></div></div>
+        <section class="panel experiment-create-panel" id="create-experiment-panel">
+          <div class="panel-heading"><div><h2>创建实验</h2><p>失败重试将复用原幂等键；修改配置后会创建新的提交。</p></div><span class="role-badge">EXECUTOR</span></div>
+          <form id="experiment-form" class="experiment-form">
+            <div class="experiment-fields">
+              <div><label class="field-label" for="experiment-name">实验名称</label><input class="text-input" id="experiment-name" maxlength="120" required placeholder="例如：模型版本对比"></div>
+              <div><label class="field-label" for="experiment-dataset">数据集版本</label><select class="text-input" id="experiment-dataset" required><option value="">先创建数据集版本</option></select></div>
+              <div><label class="field-label" for="experiment-tasks">任务子集（可选）</label><textarea class="text-input textarea-input short-textarea" id="experiment-tasks" maxlength="12000" placeholder="留空表示使用所选版本全部任务；否则每行一个 task_id"></textarea></div>
+              <div><label class="field-label" for="experiment-repeats">每个变体重复次数</label><input class="text-input" id="experiment-repeats" type="number" min="1" max="100" value="1" required></div>
+            </div>
+            <div class="variant-heading"><div><h3>运行变体</h3><p>添加基线或一个或多个 LLM 模型。</p></div><button class="button button-quiet" id="add-variant" type="button">＋ 添加变体</button></div>
+            <div id="variant-list" class="variant-list"></div>
+            <div class="recipe-row"><select class="text-input" id="recipe-select" aria-label="已保存实验配方"><option value="">选择已保存配方…</option></select><button class="button button-quiet" id="save-recipe" type="button">保存当前配置</button><button class="button button-quiet" id="load-recipe" type="button">载入</button><button class="button button-quiet" id="delete-recipe" type="button">删除</button></div>
+            <div class="form-actions experiment-submit-row"><button class="button button-primary" id="submit-experiment" type="submit">提交实验</button><button class="button button-quiet hidden" id="retry-experiment" type="button">重试上次提交</button><span class="form-feedback" id="experiment-feedback" aria-live="polite"></span></div>
+          </form>
+        </section>
+        <div class="experiment-history-heading"><h2>项目实验记录</h2><button class="text-button" id="reload-experiments" type="button">刷新记录</button></div>
+        <div class="experiment-browser">
+          <section class="panel experiment-list-panel"><div id="experiment-list" class="record-list"><div class="loading-state">选择项目后加载实验。</div></div></section>
+          <section class="panel experiment-detail-panel" id="experiment-detail"><div class="empty-detail"><div class="empty-icon">▤</div><h3>选择一项实验</h3><p>详情会显示任务、变体、作业状态、用量和执行轨迹。</p></div></section>
+        </div>
+      </section>
+
+      <section class="page" id="page-members">
+        <div class="page-heading"><div><div class="eyebrow">PROJECT MEMBERS</div><h1>项目成员</h1><p class="page-lead">每个成员的访问权限只作用于当前项目。</p></div><span class="heading-badge"><span class="badge-icon">♙</span><span><strong id="member-count">—</strong><small>位成员</small></span></span></div>
+        <div class="management-grid">
+          <section class="panel management-panel"><div class="panel-heading"><div><h2>成员与角色</h2><p>Reader 只读；Executor 可提交与取消实验；Owner 管理成员、版本和配额。</p></div><button class="text-button" id="reload-members" type="button">刷新</button></div><div id="member-list" class="record-list"><div class="loading-state">仅项目所有者可管理成员。</div></div></section>
+          <section class="panel management-panel" id="add-member-panel"><div class="panel-heading"><div><h2>添加成员</h2><p>账号必须由管理员预先创建。</p></div><span class="role-badge">OWNER</span></div>
+            <form id="member-form" class="compact-form"><label class="field-label" for="member-username">账号</label><input class="text-input" id="member-username" maxlength="80" required>
+              <label class="field-label settings-field" for="member-role">项目角色</label><select class="text-input" id="member-role"><option value="reader">Reader · 查看</option><option value="executor">Executor · 运行实验</option><option value="owner">Owner · 管理项目</option></select>
+              <div class="form-actions"><button class="button button-primary" type="submit">添加成员</button><span class="form-feedback" id="member-feedback" aria-live="polite"></span></div></form>
+          </section>
+        </div>
+      </section>
+
+      <section class="page" id="page-users">
+        <div class="page-heading"><div><div class="eyebrow">ACCOUNT ADMINISTRATION</div><h1>账号管理</h1><p class="page-lead">创建可登录账号。账号不会自动获得任何项目访问权限。</p></div><span class="secure-badge">仅管理员可用</span></div>
+        <div class="management-grid">
+          <section class="panel management-panel"><div class="panel-heading"><div><h2>账号列表</h2><p>项目访问需由项目 Owner 单独授权。</p></div><button class="text-button" id="reload-users" type="button">刷新</button></div><div id="user-list" class="record-list"><div class="loading-state">管理员登录后加载账号。</div></div></section>
+          <section class="panel management-panel"><div class="panel-heading"><div><h2>创建账号</h2><p>新账号初始无项目成员关系。</p></div></div>
+            <form id="user-form" class="compact-form"><label class="field-label" for="new-username">账号</label><input class="text-input" id="new-username" minlength="1" maxlength="64" autocomplete="off" required>
+              <label class="field-label settings-field" for="new-user-password">初始密码</label><input class="text-input" id="new-user-password" type="password" minlength="12" maxlength="256" autocomplete="new-password" required>
+              <div class="form-actions"><button class="button button-primary" type="submit">创建账号</button><span class="form-feedback" id="user-feedback" aria-live="polite"></span></div></form>
+          </section>
+        </div>
+      </section>
+
+      <section class="page" id="page-admin-settings">
+        <div class="page-heading"><div><div class="eyebrow">ADMINISTRATOR SETTINGS</div><h1>管理员设置</h1><p class="page-lead">模型服务和密钥库是此 Runtime 部署共享设置。</p></div><span class="secure-badge">仅管理员可用</span></div>
         <div class="settings-grid">
           <section class="panel settings-panel"><div class="panel-heading"><div><h2>模型服务</h2><p>仅保存服务地址、默认模型名称和重试次数。</p></div><span class="settings-icon">◎</span></div>
             <form id="provider-form" autocomplete="off"><label class="field-label" for="base-url">API Endpoint</label><input class="text-input" id="base-url" type="url" maxlength="2048" placeholder="https://api.openai.com/v1" required>
-              <label class="field-label settings-field" for="default-model">默认模型</label><input class="text-input" id="default-model" maxlength="200" placeholder="例如：gpt-4.1-mini" required>
-              <label class="field-label settings-field" for="max-retries">请求重试次数</label><div class="retry-row"><input class="text-input retry-input" id="max-retries" type="number" min="0" max="2" value="2"><span class="field-hint">失败后自动重试，范围 0–2</span></div>
-              <div class="form-actions"><button class="button button-primary" id="save-provider" type="submit">保存服务设置</button><span class="form-feedback" id="provider-feedback" aria-live="polite"></span></div>
-            </form>
+              <label class="field-label settings-field" for="default-model">默认模型</label><input class="text-input" id="default-model" maxlength="256" placeholder="模型名称" required>
+              <label class="field-label settings-field" for="max-retries">请求重试次数</label><div class="retry-row"><input class="text-input retry-input" id="max-retries" type="number" min="0" max="2" value="2"><span class="field-hint">重试次数范围 0–2</span></div>
+              <div class="form-actions"><button class="button button-primary" type="submit">保存服务设置</button><span class="form-feedback" id="provider-feedback" aria-live="polite"></span></div></form>
           </section>
-          <section class="panel vault-panel"><div class="panel-heading"><div><h2>API Key 密钥库</h2><p>使用主密码加密保存。忘记主密码后，已保存的 Key 无法恢复。</p></div><span class="vault-lock-icon" id="vault-lock-icon">⌑</span></div>
-            <div class="vault-status-box"><span class="vault-indicator" id="vault-status-dot"></span><div><strong id="vault-status-title">密钥库状态未知</strong><p id="vault-status-text">密钥不会写入浏览器存储或普通设置文件。</p></div></div>
-            <form id="vault-save-form" autocomplete="off"><label class="field-label" id="vault-password-label" for="vault-password">主密码</label><input class="text-input secret-input" id="vault-password" type="password" minlength="12" maxlength="1024" autocomplete="new-password" placeholder="至少 12 个字符" required>
+          <section class="panel vault-panel"><div class="panel-heading"><div><h2>API Key 密钥库</h2><p>使用主密码加密保存。忘记主密码后，密钥无法恢复。</p></div><span class="vault-lock-icon" id="vault-lock-icon">⌑</span></div>
+            <div class="vault-status-box"><span class="vault-indicator" id="vault-status-dot"></span><div><strong id="vault-status-title">密钥库状态未知</strong><p id="vault-status-text">Key 不会进入实验配置或浏览器存储。</p></div></div>
+            <form id="vault-save-form" autocomplete="off"><label class="field-label" for="vault-password">主密码</label><input class="text-input secret-input" id="vault-password" type="password" minlength="12" maxlength="1024" autocomplete="new-password" placeholder="至少 12 个字符" required>
               <label class="field-label settings-field" for="api-key-input">API Key</label><input class="text-input secret-input" id="api-key-input" type="password" maxlength="4096" autocomplete="new-password" placeholder="粘贴服务商提供的密钥" required>
-              <div class="vault-actions"><button class="button button-primary" id="save-vault" type="submit">加密保存 Key</button></div>
-            </form>
+              <div class="vault-actions"><button class="button button-primary" id="save-vault" type="submit">加密保存 Key</button></div></form>
             <div class="vault-divider"><span>已保存密钥库</span></div>
             <form id="vault-unlock-form" autocomplete="off"><label class="field-label" for="unlock-password">主密码</label><input class="text-input secret-input" id="unlock-password" type="password" maxlength="1024" autocomplete="current-password" placeholder="输入主密码以解锁" required><div class="vault-actions"><button class="button button-quiet" id="unlock-vault" type="submit">解锁密钥库</button><button class="button button-quiet" id="lock-vault" type="button">立即锁定</button></div></form>
-            <p class="security-footnote">解锁后密钥仅保留在运行服务的内存中。停止服务或手动锁定会清除解锁状态。</p>
+            <p class="security-footnote">解锁状态保留在服务进程内存中。退出登录不会在浏览器中保留密码或 Key。</p>
           </section>
         </div>
       </section>
-      <footer class="page-foot"><span>AgentEval Runtime</span><span>本机控制台 <b>·</b> 同源安全连接</span></footer>
+
+      <section class="page" id="page-legacy">
+        <div class="page-heading"><div><div class="eyebrow">READ ONLY ARCHIVE</div><h1>旧版实验记录</h1><p class="page-lead">此处只读查看升级前记录。新实验请使用项目内的不可变数据集版本。</p></div><button class="button button-quiet" id="reload-legacy" type="button">刷新</button></div>
+        <div id="legacy-list" class="record-list panel"><div class="loading-state">仅管理员可查看旧版记录。</div></div>
+        <section class="panel legacy-detail-panel hidden" id="legacy-detail"><div class="panel-heading"><div><h2>旧版实验详情</h2><p>升级前的记录不支持通过此页面启动或修改。</p></div><button class="text-button" id="close-legacy-detail" type="button">关闭</button></div><pre class="trace-pre" id="legacy-detail-content"></pre></section>
+      </section>
+      <footer class="page-foot"><span>AgentEval Runtime</span><span>项目级访问控制 <b>·</b> 数据由当前 Runtime 管理</span></footer>
     </main>
+  </div>
+  <div class="modal-backdrop hidden" id="create-project-modal" role="presentation">
+    <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="create-project-title">
+      <div class="panel-heading"><div><h2 id="create-project-title">创建项目</h2><p>项目创建者将成为 Owner。</p></div><button class="icon-button" id="close-create-project" type="button" aria-label="关闭">×</button></div>
+      <form id="create-project-form" class="compact-form">
+        <label class="field-label" for="new-project-name">项目名称</label><input class="text-input" id="new-project-name" maxlength="120" required>
+        <label class="field-label settings-field" for="new-project-daily">每日额度</label><input class="text-input" id="new-project-daily" type="number" min="1" step="1" required>
+        <label class="field-label settings-field" for="new-project-concurrent">并发任务数</label><input class="text-input" id="new-project-concurrent" type="number" min="1" step="1" value="1" required>
+        <div class="form-actions"><button class="button button-primary" type="submit">创建项目</button><span class="form-feedback" id="create-project-feedback" aria-live="polite"></span></div>
+      </form>
+    </section>
   </div>
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
 </body>

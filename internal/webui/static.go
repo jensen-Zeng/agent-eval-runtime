@@ -33,6 +33,8 @@ func Handler() http.Handler {
 			name = "assets/app.css"
 		case "/assets/app.js":
 			name = "assets/app.js"
+		case "/assets/manage.js":
+			name = "assets/manage.js"
 		default:
 			http.NotFound(w, r)
 			return
@@ -51,7 +53,7 @@ func Handler() http.Handler {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		case "assets/app.css":
 			w.Header().Set("Content-Type", "text/css; charset=utf-8")
-		case "assets/app.js":
+		case "assets/app.js", "assets/manage.js":
 			w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		}
 		w.WriteHeader(http.StatusOK)
