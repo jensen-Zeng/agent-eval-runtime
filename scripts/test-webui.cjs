@@ -63,6 +63,54 @@ test('openExperiment renders details through the real request and renderer', asy
   assert.match(h.document.node('#experiment-detail').children[0].children[0].children[0].textContent, /demo/);
 });
 
+test('completed jobs and experiments hide cancellation controls', async () => {
+  for (const status of ['QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELED', 'TIMED_OUT', 'INFRA_ERROR']) {
+    const h = harness(async () => response({ experiment: { id: 'e', name: 'demo', state: status, jobs: [{ id: 'job', status }] } }));
+    h.ui.state.user = { id: 'user-a', username: 'a' };
+    h.ui.state.project = project('aaaaaaaaaaaaaaaaaaaaaaaa');
+    await h.ui.openExperiment('e');
+    const detail = h.document.node('#experiment-detail');
+    const experimentActions = detail.children[0].children[2].children.map(node => node.textContent);
+    const jobActions = detail.children[2].children[0].children[2].children.map(node => node.textContent);
+    const canCancel = status === 'QUEUED' || status === 'RUNNING';
+    assert.equal(experimentActions.includes('取消实验'), canCancel, `experiment ${status}`);
+    assert.equal(jobActions.includes('取消作业'), canCancel, `job ${status}`);
+    if (status === 'TIMED_OUT' || status === 'INFRA_ERROR') {
+      assert.match(detail.children[0].children[0].children[1].className, /state-failed/);
+      assert.match(detail.children[2].children[0].children[0].children[1].className, /state-failed/);
+    }
+  }
+});
+
+test('experiment details keep the latest selection when responses arrive out of order', async t => {
+  for (const scenario of [
+    { name: 'late success', oldID: 'old', newID: 'new', status: 200 },
+    { name: 'late error', oldID: 'old', newID: 'new', status: 503 },
+    { name: 'overlapping refresh', oldID: 'same', newID: 'same', status: 200 },
+  ]) {
+    await t.test(scenario.name, async () => {
+      let releaseOld;
+      const oldWait = new Promise(resolve => { releaseOld = resolve; });
+      let requests = 0;
+      const h = harness(async () => {
+        if (++requests === 1) {
+          await oldWait;
+          return response({ experiment: { id: scenario.oldID, name: 'old result', jobs: [] }, message: 'outdated error' }, scenario.status);
+        }
+        return response({ experiment: { id: scenario.newID, name: 'new result', jobs: [] } });
+      });
+      h.ui.state.user = { id: 'user-a', username: 'a' };
+      h.ui.state.project = project('aaaaaaaaaaaaaaaaaaaaaaaa');
+      const oldLoad = h.ui.openExperiment(scenario.oldID);
+      await h.ui.openExperiment(scenario.newID);
+      releaseOld();
+      await oldLoad;
+      assert.equal(h.ui.state.experiment.name, 'new result');
+      assert.equal(h.document.node('#experiment-detail').children[0].children[0].children[0].textContent, 'new result');
+    });
+  }
+});
+
 test('late response from an old project cannot replace current data', async () => {
   let releaseOld;
   const oldWait = new Promise(resolve => { releaseOld = resolve; });

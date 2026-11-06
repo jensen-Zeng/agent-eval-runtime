@@ -9,6 +9,7 @@
   };
 
   let projectGeneration = 0;
+  let experimentGeneration = 0;
   let submissionBusy = false;
   const roleLabels = { owner: 'Owner', executor: 'Executor', reader: 'Reader' };
   const endpointProject = () => state.project ? `/v1/manage/projects/${encodeURIComponent(state.project.id)}` : '';
@@ -555,7 +556,7 @@
   function stateClass(value) {
     const v = String(value || '').toLowerCase();
     if (v.includes('success') || v.includes('complete') || v.includes('succeed')) return 'state-complete';
-    if (v.includes('fail') || v.includes('error')) return 'state-failed';
+    if (v.includes('fail') || v.includes('error') || v === 'timed_out') return 'state-failed';
     if (v.includes('cancel')) return 'state-cancelled';
     if (v.includes('run') || v.includes('queue')) return 'state-running';
     return 'state-unknown';
@@ -563,6 +564,7 @@
   async function openExperiment(id) {
     if (!state.project || !id) return;
     const generation = projectGeneration;
+    const detailGeneration = ++experimentGeneration;
     const projectID = state.project.id;
     const userID = state.user && state.user.id;
     switchTab('experiments');
@@ -570,11 +572,12 @@
     host.replaceChildren(el('div', 'loading-state', '正在加载实验详情…'));
     try {
       const result = await request(`${endpointProject()}/experiments/${encodeURIComponent(id)}`);
-      if (generation !== projectGeneration || !state.project || state.project.id !== projectID || !state.user || state.user.id !== userID) return;
+      if (detailGeneration !== experimentGeneration || generation !== projectGeneration ||
+          !state.project || state.project.id !== projectID || !state.user || state.user.id !== userID) return;
       state.experiment = result.experiment || result;
       renderExperimentDetail(state.experiment);
     } catch (error) {
-      if (generation !== projectGeneration) return;
+      if (detailGeneration !== experimentGeneration || generation !== projectGeneration) return;
       host.replaceChildren(el('div', 'runs-error', error.message));
     }
   }
@@ -609,7 +612,7 @@
     return cell;
   }
   function isTerminalExperiment(status) {
-    return ['completed', 'succeeded', 'failed', 'canceled', 'cancelled', 'partial'].includes(String(status || '').toLowerCase());
+    return ['completed', 'succeeded', 'failed', 'canceled', 'cancelled', 'partial', 'timed_out', 'infra_error'].includes(String(status || '').toLowerCase());
   }
   function jobRequest(job) { return job.request || job; }
   function renderJob(job) {
