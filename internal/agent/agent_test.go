@@ -383,6 +383,48 @@ func TestCanceledLLMContextIsNotReportedAsTimeout(t *testing.T) {
 	}
 }
 
+func TestOutputLimitFailurePreservesReportedUsage(t *testing.T) {
+	for _, completedCalls := range []int{0, 1} {
+		t.Run(fmt.Sprintf("after_%d_successful_calls", completedCalls), func(t *testing.T) {
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				var request struct {
+					Max int `json:"max_completion_tokens"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+					t.Error(err)
+					return
+				}
+				if request.Max != 64 {
+					t.Errorf("requested output limit = %d, want 64", request.Max)
+				}
+				outputTokens := 10
+				if requests > completedCalls {
+					outputTokens = 65
+				}
+				_, _ = fmt.Fprintf(w, `{"choices":[{"message":{"tool_calls":[{"id":"call-%d","type":"function","function":{"name":"list_files","arguments":"{\"path\":\"\"}"}}]}}],"usage":{"prompt_tokens":100,"completion_tokens":%d,"total_tokens":%d}}`, requests, outputTokens, 100+outputTokens)
+			}))
+			defer server.Close()
+			box := &fakeBox{files: map[string][]byte{}}
+			task := domain.Task{Prompt: "Inspect files", Budget: domain.DefaultBudget()}
+			task.Budget.MaxOutputTokens = 64
+			result, err := (LLM{Config: Config{BaseURL: server.URL, Model: "test-model", APIKey: "test-key"}}).Run(context.Background(), box, task, nil)
+			if domain.Reason(err) != "token_budget" {
+				t.Fatalf("expected output budget failure, got result=%+v err=%v", result, err)
+			}
+			wantInput := 100 * (completedCalls + 1)
+			wantOutput := 10*completedCalls + 65
+			if result.Usage.InputTokens != wantInput || result.Usage.OutputTokens != wantOutput || result.Usage.TotalTokens != wantInput+wantOutput {
+				t.Fatalf("over-limit response usage was lost: got %+v, want input=%d output=%d total=%d", result.Usage, wantInput, wantOutput, wantInput+wantOutput)
+			}
+			if requests != completedCalls+1 || result.Usage.ModelCalls != requests || result.Usage.Quality != "reported" || box.calls != completedCalls {
+				t.Fatalf("over-limit response must stop before executing tools: requests=%d tool calls=%d usage=%+v", requests, box.calls, result.Usage)
+			}
+		})
+	}
+}
+
 func TestContentOnlyResponsesReestimateConversationBudget(t *testing.T) {
 	requests := 0
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -150,12 +150,12 @@ func (a LLM) Run(ctx context.Context, box sandbox.Sandbox, task domain.Task, emi
 				usage.TotalTokens += inputEstimate + callCompletion
 				return domain.AgentResult{Usage: usage}, domain.Fail("malformed_response", errors.New("provider token usage is inconsistent"))
 			}
-			if resp.Usage.CompletionTokens > callCompletion {
-				return domain.AgentResult{Usage: usage}, domain.Fail("token_budget", errors.New("completion exceeded requested output limit"))
-			}
 			usage.InputTokens += resp.Usage.PromptTokens
 			usage.OutputTokens += resp.Usage.CompletionTokens
 			usage.TotalTokens += resp.Usage.TotalTokens
+			if resp.Usage.CompletionTokens > callCompletion {
+				return domain.AgentResult{Usage: usage}, domain.Fail("token_budget", errors.New("completion exceeded requested output limit"))
+			}
 		} else {
 			usage.InputTokens += inputEstimate
 			outBytes, _ := json.Marshal(resp.Choices)
